@@ -10,7 +10,7 @@ The platform integrates pool data from ethereum and multiple protocols, making t
 
 Implementation formats:
 
-- [API Server](./API_V1.md)
+- [API Server](docs/API_V1.md)
 - Frontend dashboard
 
 The name originates from the Hebrew word "tel", meaning "hill". It metaphorically represents an "on-chain hill", symbolizing the ebb and flow of liquidity on a chart.
