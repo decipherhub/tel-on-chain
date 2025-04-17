@@ -33,6 +33,8 @@ By structuring and providing this data, we can democratize access to valuable tr
 
 ## How We're Building It
 
+![diagram](./assets/diagram.png)
+
 ### 1. Data Collection (Indexing)
 
 - Collect pool data from major DEXs (Uniswap v2/v3/v4, Curve, Balancer, etc.) via RPC using `alloy-rs`.
