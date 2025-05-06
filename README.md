@@ -73,7 +73,20 @@ By structuring and providing this data, we can democratize access to valuable tr
 
 ## Team
 
-[Team members will go here]
+- [guzus](https://github.com/guuzs)
+    - CS major at Seoul National University
+    - 3 years of experience in DeFi and MEV at a crypto trading firm
+    - Winner at ETHGlobal Bangkok 2024 and Seoulana 2025 hackathons
+- [0xGh-st](https://github.com/0xGh-st)
+    - Dept. Of Financial Security, Blockchain major(master degree) at Korea University
+    - Upside Academy(Upbit X Chainlight) 1st
+    - Upbit D Conference(UDC) 2024 Speaker
+    - Best Of the Best 12th Vulnerability Analysis
+    - Ethcon Korea 2024 CTF Section Organizer
+- [lee2020090791](https://github.com/lee2020090791)
+    - CS major at Hanyang University
+    - 1 year internship on OSDC labs
+    - Blockchain core developer
 
 ## License
 
