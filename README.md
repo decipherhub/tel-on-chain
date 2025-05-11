@@ -73,7 +73,7 @@ By structuring and providing this data, we can democratize access to valuable tr
 
 ## Team
 
-- [guzus](https://github.com/guuzs)
+- [guzus](https://github.com/guzus)
     - CS major at Seoul National University
     - 3 years of experience in DeFi and MEV at a crypto trading firm
     - Winner at ETHGlobal Bangkok 2024 and Seoulana 2025 hackathons
