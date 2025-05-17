@@ -1,0 +1,35 @@
+# tel-on-chain Default Configuration
+
+[ethereum]
+url = "https://eth.llamarpc.com"
+timeout_secs = 30
+
+[database]
+url = "sqlite:tel_on_chain.db"
+
+[api]
+host = "127.0.0.1"
+port = 8080
+
+[indexer]
+interval_secs = 600 # 10 minutes
+batch_size = 1000
+
+# Supported DEXes
+[[dexes]]
+name = "uniswap_v2"
+chain_id = 1
+factory_address = "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f"
+enabled = true
+
+[[dexes]]
+name = "uniswap_v3"
+chain_id = 1
+factory_address = "0x1F98431c8aD98523631AE4a59f267346ea31F984"
+enabled = true
+
+[[dexes]]
+name = "sushiswap"
+chain_id = 1
+factory_address = "0xC0AEe478e3658e2610c5F7A4A2E1777cE9e4f2Ac"
+enabled = true

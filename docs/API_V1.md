@@ -1,6 +1,6 @@
-# tel-on-chain API Documentation
+# tel-on-chain API v1 Documentation
 
-This document outlines the API endpoints available in tel-on-chain for accessing aggregated buy/sell wall data from various decentralized exchanges on Ethereum.
+The tel-on-chain API provides access to DEX buy/sell wall data and liquidity analytics across multiple chains and protocols.
 
 ## Base URL
 
@@ -8,193 +8,290 @@ This document outlines the API endpoints available in tel-on-chain for accessing
 https://api.tel-on-chain.com/v1
 ```
 
+For local development:
+
+```
+http://localhost:8080/v1
+```
+
 ## Authentication
 
-All API requests require an API key to be included in the request header:
+**TODO: Implement API authentication**
 
-```
-Authorization: Bearer YOUR_API_KEY
-```
+Authentication will be required for production use. The following methods will be supported:
 
-To obtain an API key, please contact the tel-on-chain team.
+- API Key: Pass via `x-api-key` header
+- JWT Tokens: For authenticated user sessions
 
-## Rate Limiting
-
-- 60 requests per minute per API key
+During development, authentication is disabled by default.
 
 ## Endpoints
 
-### Get Real-time Liquidity
+### Health Check
 
-Retrieve the current liquidity distribution for a specific token pair or all pairs across multiple DEXs.
-
-```http
-GET /liquidity/realtime
+```
+GET /health
 ```
 
-**Parameters:**
+Returns `200 OK` if the service is healthy.
 
-| Parameter  | Type     | Required | Description                                                 |
-| ---------- | -------- | -------- | ----------------------------------------------------------- |
-| baseToken  | string   | Yes      | Base token address                                          |
-| quoteToken | string   | No       | Quote token address (default: "all")                        |
-| dexs       | string[] | No       | Array of DEX names to include (default: all supported DEXs) |
-| pools      | string[] | No       | Array of specific pool identifiers to query                 |
-| resolution | number   | No       | Price range resolution in basis points (default: 100)       |
-| timeframe  | string   | No       | Time window for aggregation (default: "24h")                |
+### Get Liquidity Walls
 
-**Response:**
+```
+GET /liquidity/walls/:token0/:token1
+```
 
-For specific quote token:
+Returns buy/sell wall data for a token pair across all supported DEXes.
+
+**Path Parameters:**
+
+- `token0`: The address of the first token
+- `token1`: The address of the second token
+
+**Query Parameters:**
+
+- `dex`: (Optional) Filter results by DEX name (e.g., "uniswap_v2", "uniswap_v3")
+- `chain_id`: (Optional) Filter results by chain ID (e.g., 1 for Ethereum mainnet)
+
+**Example Request:**
+
+```
+GET /liquidity/walls/0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2/0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48?chain_id=1
+```
+
+**Example Response:**
 
 ```json
 {
-  "timestamp": "2024-03-27T12:00:00Z",
-  "blockNumber": "19250000",
-  "baseToken": {
-    "address": "0x...",
-    "symbol": "ETH",
-    "decimals": 18
+  "token0": {
+    "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+    "symbol": "WETH",
+    "name": "Wrapped Ether",
+    "decimals": 18,
+    "chain_id": 1
   },
-  "quoteToken": {
-    "address": "0x...",
+  "token1": {
+    "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
     "symbol": "USDC",
-    "decimals": 6
+    "name": "USD Coin",
+    "decimals": 6,
+    "chain_id": 1
   },
-  "distributions": [
+  "price": 1625.75,
+  "buy_walls": [
     {
-      "priceLevel": "1950.00",
-      "buyLiquidity": "1000000.00",
-      "sellLiquidity": "500000.00",
-      "sources": [
-        {
-          "dex": "Uniswap V3",
-          "poolId": "eth_usdc_500",
-          "buyLiquidity": "600000.00",
-          "sellLiquidity": "300000.00"
-        }
-      ]
+      "price_lower": 1550.0,
+      "price_upper": 1600.0,
+      "liquidity_value": 25000000.0,
+      "dex_sources": {
+        "uniswap_v3": 15000000.0,
+        "uniswap_v2": 10000000.0
+      }
+    },
+    {
+      "price_lower": 1500.0,
+      "price_upper": 1550.0,
+      "liquidity_value": 35000000.0,
+      "dex_sources": {
+        "uniswap_v3": 20000000.0,
+        "uniswap_v2": 15000000.0
+      }
     }
   ],
-  "keyMetrics": {
-    "averageLiquidityDepth": "1000000.00",
-    "liquidityConcentration": 0.75,
-    "strongestSupportLevel": "1920.00",
-    "strongestResistanceLevel": "2050.00"
-  }
-}
-```
-
-For all quote tokens (when quoteToken = "all"):
-
-```json
-{
-  "timestamp": "2024-03-27T12:00:00Z",
-  "blockNumber": "19250000",
-  "baseToken": {
-    "address": "0x...",
-    "symbol": "ETH",
-    "decimals": 18
-  },
-  "aggregatedData": {
-    "totalLiquidity": "5000000000.00",
-    "liquidityDistribution": {
-      "dexs": [
-        {
-          "name": "Uniswap V3",
-          "liquidity": "2500000000.00",
-          "percentage": 50.0,
-          "pools": [
-            {
-              "id": "eth_usdc_500",
-              "fee": 500,
-              "liquidity": "1500000000.00",
-              "percentage": 30.0
-            },
-            {
-              "id": "eth_usdc_3000",
-              "fee": 3000,
-              "liquidity": "1000000000.00",
-              "percentage": 20.0
-            }
-          ]
-        },
-        {
-          "name": "Curve",
-          "liquidity": "1500000000.00",
-          "percentage": 30.0,
-          "pools": [
-            {
-              "id": "eth_usdc_pool",
-              "liquidity": "1500000000.00",
-              "percentage": 30.0
-            }
-          ]
-        }
-      ]
-    },
-    "majorPairs": [
-      {
-        "quoteToken": {
-          "symbol": "USDC",
-          "address": "0x...",
-          "liquidity": "2500000000.00",
-          "percentage": 50.0
-        }
-      }
-    ],
-    "keyMetrics": {
-      "averageLiquidityDepth": "1000000.00",
-      "liquidityConcentration": 0.75,
-      "strongestSupportLevel": "1920.00",
-      "strongestResistanceLevel": "2050.00"
-    }
-  }
-}
-```
-
-### Get Historical Liquidity
-
-Retrieve historical liquidity data for a specific time period.
-
-```http
-GET /liquidity/historical
-```
-
-**Parameters:**
-
-| Parameter  | Type    | Required | Description                   |
-| ---------- | ------- | -------- | ----------------------------- |
-| baseToken  | string  | Yes      | Base token address            |
-| quoteToken | string  | Yes      | Quote token address           |
-| startTime  | ISO8601 | Yes      | Start timestamp               |
-| endTime    | ISO8601 | Yes      | End timestamp                 |
-| interval   | string  | No       | Time interval (default: "1h") |
-
-**Response:**
-
-```json
-{
-  "data": [
+  "sell_walls": [
     {
-      "timestamp": "2024-03-27T11:00:00Z",
-      "blockNumber": "19249900",
-      "distributions": [
-        {
-          "priceLevel": "1950.00",
-          "buyLiquidity": "1000000.00",
-          "sellLiquidity": "500000.00"
-        }
-      ]
+      "price_lower": 1650.0,
+      "price_upper": 1700.0,
+      "liquidity_value": 30000000.0,
+      "dex_sources": {
+        "uniswap_v3": 18000000.0,
+        "uniswap_v2": 12000000.0
+      }
+    },
+    {
+      "price_lower": 1700.0,
+      "price_upper": 1750.0,
+      "liquidity_value": 40000000.0,
+      "dex_sources": {
+        "uniswap_v3": 25000000.0,
+        "uniswap_v2": 15000000.0
+      }
     }
-  ]
+  ],
+  "timestamp": "2023-05-01T12:34:56Z"
 }
 ```
 
-### Get Supported DEXs
+### Get Historical Liquidity Data
 
-Retrieve the list of supported decentralized exchanges on Ethereum.
-
-```http
-GET /dexs
 ```
+GET /liquidity/history/:token0/:token1
+```
+
+Returns historical liquidity data for a token pair over a specified time range.
+
+**Path Parameters:**
+
+- `token0`: The address of the first token
+- `token1`: The address of the second token
+
+**Query Parameters:**
+
+- `dex`: (Optional) Filter results by DEX name (e.g., "uniswap_v2", "uniswap_v3")
+- `chain_id`: (Optional) Filter results by chain ID (e.g., 1 for Ethereum mainnet)
+- `start_time`: (Optional) Start timestamp in ISO format (default: 24 hours ago)
+- `end_time`: (Optional) End timestamp in ISO format (default: current time)
+- `interval`: (Optional) Time interval between data points in minutes (default: 60)
+
+**Example Request:**
+
+```
+GET /liquidity/history/0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2/0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48?chain_id=1&start_time=2023-04-30T12:00:00Z&end_time=2023-05-01T12:00:00Z&interval=120
+```
+
+**Example Response:**
+
+```json
+{
+  "token0": {
+    "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+    "symbol": "WETH",
+    "name": "Wrapped Ether",
+    "decimals": 18,
+    "chain_id": 1
+  },
+  "token1": {
+    "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+    "symbol": "USDC",
+    "name": "USD Coin",
+    "decimals": 6,
+    "chain_id": 1
+  },
+  "data_points": [
+    {
+      "timestamp": "2023-04-30T12:00:00Z",
+      "price": 1620.5,
+      "total_liquidity_value": 120000000.0,
+      "buy_wall_strength": 55000000.0,
+      "sell_wall_strength": 65000000.0,
+      "strongest_buy_wall": {
+        "price_lower": 1550.0,
+        "price_upper": 1600.0,
+        "liquidity_value": 25000000.0
+      },
+      "strongest_sell_wall": {
+        "price_lower": 1650.0,
+        "price_upper": 1700.0,
+        "liquidity_value": 30000000.0
+      }
+    },
+    {
+      "timestamp": "2023-04-30T14:00:00Z",
+      "price": 1618.75,
+      "total_liquidity_value": 125000000.0,
+      "buy_wall_strength": 60000000.0,
+      "sell_wall_strength": 65000000.0,
+      "strongest_buy_wall": {
+        "price_lower": 1550.0,
+        "price_upper": 1600.0,
+        "liquidity_value": 28000000.0
+      },
+      "strongest_sell_wall": {
+        "price_lower": 1650.0,
+        "price_upper": 1700.0,
+        "liquidity_value": 32000000.0
+      }
+    }
+  ],
+  "time_period": {
+    "start_time": "2023-04-30T12:00:00Z",
+    "end_time": "2023-05-01T12:00:00Z",
+    "interval_minutes": 120
+  }
+}
+```
+
+### Get Token Information
+
+```
+GET /tokens/:chain_id/:address
+```
+
+Returns information about a token.
+
+**Path Parameters:**
+
+- `chain_id`: The chain ID (e.g., 1 for Ethereum mainnet)
+- `address`: The token address
+
+**Example Request:**
+
+```
+GET /tokens/1/0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2
+```
+
+**Example Response:**
+
+```json
+{
+  "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+  "symbol": "WETH",
+  "name": "Wrapped Ether",
+  "decimals": 18,
+  "chain_id": 1
+}
+```
+
+### Get Pools by DEX
+
+```
+GET /pools/:dex/:chain_id
+```
+
+Returns pools available for a specific DEX and chain.
+
+**Path Parameters:**
+
+- `dex`: The DEX name (e.g., "uniswap_v2", "uniswap_v3")
+- `chain_id`: The chain ID (e.g., 1 for Ethereum mainnet)
+
+**Example Request:**
+
+```
+GET /pools/uniswap_v3/1
+```
+
+**Example Response:**
+
+```json
+[
+  "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640",
+  "0x8ad599c3a0ff1de082011efddc58f1908eb6e6d8",
+  "0x7bea39867e4169dbe237d55c8242a8f2fcdcc387"
+]
+```
+
+## Error Responses
+
+The API returns standard HTTP status codes to indicate the success or failure of a request.
+
+**Example Error Response:**
+
+```json
+{
+  "message": "Invalid token address",
+  "code": 400
+}
+```
+
+## Rate Limiting
+
+Currently, there are no rate limits in place. This may change in the future.
+
+## Versioning
+
+The API version is included in the URL path (e.g., `/v1/liquidity/walls`). Major version changes may include breaking changes.
+
+## Support
+
+For API support, please create an issue on our GitHub repository.

@@ -69,24 +69,93 @@ By structuring and providing this data, we can democratize access to valuable tr
 
 ## Getting Started
 
-[Installation and setup instructions will go here]
+### Prerequisites
+
+- Rust (stable or nightly)
+- SQLite 3
+
+### Installation
+
+1. Clone the repository:
+
+```bash
+git clone https://github.com/decipherhub/tel-on-chain.git
+cd tel-on-chain
+```
+
+2. Build the project:
+
+```bash
+cargo build --release
+```
+
+### Usage
+
+Tel-on-chain provides two main utilities:
+
+#### Running the API Server
+
+```bash
+cargo run --release -- api
+```
+
+This will start the API server on the configured host and port (default: `127.0.0.1:8080`).
+
+#### Running the Indexer
+
+To start the continuous indexer (collecting data from all configured DEXs):
+
+```bash
+cargo run --release -- index
+```
+
+To index a specific DEX and pool:
+
+```bash
+cargo run --release -- index --dex uniswap_v3 --pair 0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640
+```
+
+### Configuration
+
+The configuration is stored in `config/default.toml`. You can specify:
+
+- RPC endpoints for different blockchains
+- Database connection settings
+- API server settings
+- DEXes to monitor and their factory addresses
+
+### Project Structure
+
+- `src/api`: API server implementation
+- `src/config`: Configuration handling
+- `src/core`: Core analysis logic (liquidity walls, support/resistance)
+- `src/dexes`: DEX protocol adapters (Uniswap V2/V3, Sushiswap, etc.)
+- `src/indexer`: Blockchain data indexing logic
+- `src/models`: Data structures and types
+- `src/providers`: Blockchain RPC providers
+- `src/storage`: Database interaction
+- `src/utils`: Utility functions
+
+### API Documentation
+
+API documentation is available at [docs/API_V1.md](docs/API_V1.md).
 
 ## Team
 
 - [guzus](https://github.com/guzus)
-    - CS major at Seoul National University
-    - 3 years of experience in DeFi and MEV at a crypto trading firm
-    - Winner at ETHGlobal Bangkok 2024 and Seoulana 2025 hackathons
+  - CS major at Seoul National University
+  - 3 years of experience in DeFi and MEV at a crypto trading firm
+  - Winner at ETHGlobal Bangkok 2024 and Seoulana 2025 hackathons
 - [0xGh-st](https://github.com/0xGh-st)
-    - Dept. Of Financial Security, Blockchain major(master degree) at Korea University
-    - Upside Academy(Upbit X Chainlight) 1st
-    - Upbit D Conference(UDC) 2024 Speaker
-    - Best Of the Best 12th Vulnerability Analysis
-    - Ethcon Korea 2024 CTF Section Organizer
+  - Dept. Of Financial Security, Blockchain major(master degree) at Korea University
+  - Upside Academy(Upbit X Chainlight) 1st
+  - Upbit D Conference(UDC) 2024 Speaker
+  - Best Of the Best 12th Vulnerability Analysis
+  - Ethcon Korea 2024 CTF Section Organizer
 - [lee2020090791](https://github.com/lee2020090791)
-    - CS major at Hanyang University
-    - 1 year internship on OSDC labs
-    - Blockchain core developer
+  - CS major at Hanyang University
+  - 1 year internship on OSDC labs
+  - Blockchain core developer
 
 ## License
 
