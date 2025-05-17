@@ -34,6 +34,7 @@ alloy-rpc-client = "1.0.1"
 alloy-transport-http = "1.0.1"
 alloy-json-rpc = "1.0.1"
 alloy-network = "1.0.1"
+alloy-contract = "1.0.1"
 reqwest = { version = "0.11", features = ["json"] }
 
 # egui dependencies

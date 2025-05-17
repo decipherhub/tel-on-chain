@@ -1,7 +1,10 @@
 use crate::config::Config;
+use crate::dexes::utils::get_token;
 use crate::error::Error;
 use crate::models::{LiquidityWall, LiquidityWallsResponse, Token};
+use crate::providers::ProviderManager;
 use crate::storage::Storage;
+use alloy_primitives::Address;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json};
@@ -25,6 +28,7 @@ pub struct LiquidityWallsQuery {
 pub struct AppState {
     storage: Arc<dyn Storage>,
     config: Config,
+    provider_manager: Arc<ProviderManager>,
 }
 
 /// API error response
@@ -50,6 +54,14 @@ impl From<Error> for ApiError {
                 message: msg,
                 code: 400,
             },
+            Error::InvalidAddress(msg) => ApiError {
+                message: format!("Invalid address: {}", msg),
+                code: 400,
+            },
+            Error::ProviderError(msg) => ApiError {
+                message: format!("Provider error: {}", msg),
+                code: 500,
+            },
             Error::Unknown(msg) => ApiError {
                 message: msg,
                 code: 500,
@@ -71,7 +83,7 @@ fn routes(state: Arc<AppState>) -> Router {
             "/v1/liquidity/walls/:token0/:token1",
             get(get_liquidity_walls),
         )
-        .route("/v1/tokens/:chain_id/:address", get(get_token))
+        .route("/v1/tokens/:chain_id/:address", get(get_token_info))
         .route("/v1/pools/:dex/:chain_id", get(get_pools_by_dex))
         .with_state(state)
 }
@@ -129,19 +141,23 @@ async fn get_liquidity_walls(
 }
 
 /// Get token information
-async fn get_token(
+async fn get_token_info(
     Path((chain_id, address)): Path<(u64, String)>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Token>, ApiError> {
-    // This is a stub implementation
-    let token = Token {
-        address: Default::default(),
-        symbol: "TOKEN".to_string(),
-        name: "Test Token".to_string(),
-        decimals: 18,
-        chain_id,
-    };
+    let provider = state
+        .provider_manager
+        .by_chain_id(chain_id)
+        .ok_or_else(|| ApiError {
+            message: format!("No provider found for chain {}", chain_id),
+            code: 400,
+        })?;
+    let address = Address::parse_checksummed(&address, None).map_err(|e| ApiError {
+        message: format!("Invalid address format: {}", e),
+        code: 400,
+    })?;
 
+    let token = get_token(provider.clone(), address, chain_id).await?;
     Ok(Json(token))
 }
 
@@ -158,29 +174,36 @@ async fn get_pools_by_dex(
 
 /// Run the API server
 pub async fn run_server(config: Config) -> Result<(), Error> {
-    // In a real implementation, we would initialize the database connection here
+    // Initialize the database connection
     let storage = Arc::new(crate::storage::SqliteStorage::new(&config.database.url)?);
+
+    // Initialize the provider manager
+    let provider_manager = Arc::new(ProviderManager::new(
+        &config.ethereum,
+        config.polygon.as_ref(),
+        config.arbitrum.as_ref(),
+        config.optimism.as_ref(),
+    )?);
 
     let state = Arc::new(AppState {
         storage,
         config: config.clone(),
+        provider_manager,
     });
 
     let cors = CorsLayer::new().allow_origin(Any);
-
     let app = routes(state).layer(cors);
 
     // Use port 8081 instead of the configured port
     let addr = format!("{}:{}", config.api.host, 8081)
         .parse::<SocketAddr>()
-        .map_err(|e| Error::ApiError(format!("Invalid address: {}", e)))?;
+        .map_err(|e| Error::Unknown(format!("Failed to parse socket address: {}", e)))?;
 
     info!("Starting API server on {}", addr);
-
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
         .await
-        .map_err(|e| Error::ApiError(format!("Server error: {}", e)))?;
+        .map_err(|e| Error::Unknown(format!("Server error: {}", e)))?;
 
     Ok(())
 }
