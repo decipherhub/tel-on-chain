@@ -24,6 +24,17 @@ chrono = { version = "0.4.31", features = ["serde"] }
 num-bigint = "0.4.4"
 num-traits = "0.2.16"
 rust_decimal = "1.31.0"
+async-trait = "0.1.74"
+
+# Alloy dependencies
+alloy-primitives = { version = "1.0.1", features = ["serde"] }
+alloy-sol-types = "1.0.1"
+alloy-provider = "1.0.1"
+alloy-rpc-client = "1.0.1"
+alloy-transport-http = "1.0.1"
+alloy-json-rpc = "1.0.1"
+alloy-network = "1.0.1"
+reqwest = { version = "0.11", features = ["json"] }
 
 [lib]
 name = "tel_on_chain"

@@ -1,9 +1,10 @@
 use crate::error::Error;
 use crate::Address;
+use std::str::FromStr;
 
-/// Convert a string to an address (which is just a string in our temporary implementation)
+/// Convert a string to an address
 pub fn parse_address(address_str: &str) -> Result<Address, Error> {
-    Ok(address_str.to_string())
+    Address::from_str(address_str).map_err(|_| Error::InvalidAddress(address_str.to_string()))
 }
 
 /// Calculate price impact for constant product AMM

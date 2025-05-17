@@ -2,28 +2,26 @@ use crate::config::Config;
 use crate::error::Error;
 use crate::models::{LiquidityWall, LiquidityWallsResponse, Token};
 use crate::storage::Storage;
-use axum::{
-    extract::{Path, Query, State},
-    http::StatusCode,
-    response::IntoResponse,
-    routing::get,
-    Json, Router,
-};
+use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Json};
+use axum::routing::get;
+use axum::Router;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
-use tracing::{error, info};
+use tracing::info;
 
-/// Query parameters for the liquidity walls endpoint
+/// Query parameters for liquidity walls endpoint
 #[derive(Debug, Deserialize)]
 pub struct LiquidityWallsQuery {
     dex: Option<String>,
     chain_id: Option<u64>,
 }
 
-/// Application state shared across handlers
+/// Application state shared across all routes
 pub struct AppState {
     storage: Arc<dyn Storage>,
     config: Config,
@@ -172,7 +170,8 @@ pub async fn run_server(config: Config) -> Result<(), Error> {
 
     let app = routes(state).layer(cors);
 
-    let addr = format!("{}:{}", config.api.host, config.api.port)
+    // Use port 8081 instead of the configured port
+    let addr = format!("{}:{}", config.api.host, 8081)
         .parse::<SocketAddr>()
         .map_err(|e| Error::ApiError(format!("Invalid address: {}", e)))?;
 

@@ -28,4 +28,10 @@ pub enum Error {
 
     #[error("API error: {0}")]
     ApiError(String),
+
+    #[error("Invalid address: {0}")]
+    InvalidAddress(String),
+
+    #[error("Unknown DEX: {0}")]
+    UnknownDEX(String),
 }

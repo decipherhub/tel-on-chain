@@ -1,41 +1,33 @@
 use crate::config::RpcConfig;
 use crate::error::Error;
-use alloy_provider::{Provider, ProviderBuilder};
-use alloy_rpc_client::RpcClient;
-use alloy_transport_http::Http;
+use alloy_network::Ethereum;
+use alloy_provider::RootProvider;
+use reqwest::Url;
 use std::sync::Arc;
-use std::time::Duration;
 
 /// A provider for interacting with an Ethereum node
 pub struct EthereumProvider {
-    provider: Provider<Http>,
+    provider: Arc<RootProvider<Ethereum>>,
     chain_id: u64,
 }
 
 impl EthereumProvider {
     /// Create a new Ethereum provider from the given configuration
     pub fn new(config: &RpcConfig, chain_id: u64) -> Result<Self, Error> {
-        let timeout = Duration::from_secs(config.timeout_secs);
+        let url = config
+            .url
+            .parse::<Url>()
+            .map_err(|e| Error::ProviderError(e.to_string()))?;
 
-        let http = Http::new_with_client(
-            config
-                .url
-                .parse()
-                .map_err(|e| Error::ProviderError(e.to_string()))?,
-            reqwest::Client::builder()
-                .timeout(timeout)
-                .build()
-                .map_err(|e| Error::ProviderError(e.to_string()))?,
-        );
-
-        let provider = Provider::new(http);
+        // Create the provider with the URL
+        let provider = Arc::new(RootProvider::<Ethereum>::new_http(url));
 
         Ok(Self { provider, chain_id })
     }
 
     /// Get the provider instance
-    pub fn provider(&self) -> &Provider<Http> {
-        &self.provider
+    pub fn provider(&self) -> Arc<RootProvider<Ethereum>> {
+        self.provider.clone()
     }
 
     /// Get the chain ID

@@ -118,10 +118,12 @@ impl Storage for SqliteStorage {
     fn save_token(&self, token: &Token) -> Result<(), Error> {
         // Simple implementation to insert or replace token
         let conn = self.conn.lock().unwrap();
+        // Convert Address to String for storage
+        let address_str = token.address.to_string();
         conn.execute(
             "INSERT OR REPLACE INTO tokens (address, chain_id, name, symbol, decimals) VALUES (?1, ?2, ?3, ?4, ?5)",
             params![
-                token.address,  // No need for format since Address is now String
+                address_str,
                 token.chain_id,
                 token.name,
                 token.symbol,
@@ -133,16 +135,22 @@ impl Storage for SqliteStorage {
     }
 
     fn get_token(&self, address: Address, chain_id: u64) -> Result<Option<Token>, Error> {
+        // Convert Address to String for querying
+        let address_str = address.to_string();
         // In a real implementation, we would query the database for the token
         Ok(None)
     }
 
     fn save_pool(&self, pool: &Pool) -> Result<(), Error> {
+        // Convert Address to String for storage
+        let address_str = pool.address.to_string();
         // In a real implementation, we would insert the pool into the database
         Ok(())
     }
 
     fn get_pool(&self, address: Address) -> Result<Option<Pool>, Error> {
+        // Convert Address to String for querying
+        let address_str = address.to_string();
         // In a real implementation, we would query the database for the pool
         Ok(None)
     }
@@ -153,6 +161,8 @@ impl Storage for SqliteStorage {
     }
 
     fn get_pools_by_token(&self, token_address: Address) -> Result<Vec<Pool>, Error> {
+        // Convert Address to String for querying
+        let address_str = token_address.to_string();
         // In a real implementation, we would query the database for pools
         Ok(Vec::new())
     }
@@ -161,6 +171,9 @@ impl Storage for SqliteStorage {
         &self,
         distribution: &LiquidityDistribution,
     ) -> Result<(), Error> {
+        // Convert Address to String for storage
+        let token0_address_str = distribution.token0.address.to_string();
+        let token1_address_str = distribution.token1.address.to_string();
         // In a real implementation, we would insert the distribution into the database
         Ok(())
     }
@@ -172,6 +185,9 @@ impl Storage for SqliteStorage {
         dex_name: &str,
         chain_id: u64,
     ) -> Result<Option<LiquidityDistribution>, Error> {
+        // Convert Address to String for querying
+        let token0_str = token0.to_string();
+        let token1_str = token1.to_string();
         // In a real implementation, we would query the database for the latest distribution
         Ok(None)
     }
@@ -209,6 +225,16 @@ pub async fn get_pool_async(
 ) -> Result<Option<Pool>, Error> {
     let storage_clone = Arc::clone(&storage);
     task::spawn_blocking(move || storage_clone.get_pool(address))
+        .await
+        .unwrap()
+}
+
+pub async fn save_liquidity_distribution_async(
+    storage: Arc<dyn Storage>,
+    distribution: LiquidityDistribution,
+) -> Result<(), Error> {
+    let storage_clone = Arc::clone(&storage);
+    task::spawn_blocking(move || storage_clone.save_liquidity_distribution(&distribution))
         .await
         .unwrap()
 }

@@ -3,9 +3,8 @@ use crate::error::Error;
 use crate::models::{LiquidityDistribution, LiquidityTick, Pool, PriceLiquidity, Token};
 use crate::providers::EthereumProvider;
 use alloy_primitives::{Address, U256};
+use async_trait::async_trait;
 use chrono::Utc;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 
 pub struct UniswapV3 {
@@ -25,8 +24,13 @@ impl UniswapV3 {
     fn sqrt_price_x96_to_price(sqrt_price_x96: U256, decimal0: u8, decimal1: u8) -> f64 {
         // Price = (sqrtPriceX96 / 2^96)^2 * (10^decimal0 / 10^decimal1)
         // This is a simplified implementation
-        let q96 = U256::from(1) << 96;
-        let sqrt_price = sqrt_price_x96.as_f64() / q96.as_f64();
+        let q96: U256 = U256::from(1) << 96;
+
+        // Convert U256 to f64 by using its string representation
+        let sqrt_price_f64: f64 = sqrt_price_x96.to_string().parse().unwrap_or(0.0);
+        let q96_f64: f64 = q96.to_string().parse().unwrap_or(1.0);
+
+        let sqrt_price = sqrt_price_f64 / q96_f64;
         let price = sqrt_price * sqrt_price;
 
         // Adjust for token decimals
@@ -37,8 +41,8 @@ impl UniswapV3 {
     // Helper to get information from a tick
     async fn get_tick_info(
         &self,
-        pool_address: Address,
-        tick_idx: i32,
+        _pool_address: Address,
+        _tick_idx: i32,
     ) -> Result<(u128, i128), Error> {
         // For demonstration, this is simplified
         // In a real implementation, we would query the ticks mapping
@@ -46,6 +50,7 @@ impl UniswapV3 {
     }
 }
 
+#[async_trait]
 impl DexProtocol for UniswapV3 {
     fn name(&self) -> &str {
         "uniswap_v3"
@@ -63,110 +68,91 @@ impl DexProtocol for UniswapV3 {
         self.provider.clone()
     }
 
-    fn get_pool<'a>(
-        &'a self,
+    async fn get_pool(&self, pool_address: Address) -> Result<Pool, Error> {
+        // Placeholder implementation
+        let token0 = Token {
+            address: Address::ZERO,
+            symbol: "DUMMY0".to_string(),
+            name: "Dummy Token 0".to_string(),
+            decimals: 18,
+            chain_id: self.chain_id(),
+        };
+
+        let token1 = Token {
+            address: Address::ZERO,
+            symbol: "DUMMY1".to_string(),
+            name: "Dummy Token 1".to_string(),
+            decimals: 18,
+            chain_id: self.chain_id(),
+        };
+
+        Ok(Pool {
+            address: pool_address,
+            dex_name: self.name().to_string(),
+            chain_id: self.chain_id(),
+            tokens: vec![token0, token1],
+            creation_block: 0,
+            creation_timestamp: Utc::now(),
+            last_updated_block: 0,
+            last_updated_timestamp: Utc::now(),
+        })
+    }
+
+    async fn get_pools_for_token(&self, _token_address: Address) -> Result<Vec<Pool>, Error> {
+        // This would require scanning events or getting pools from an indexer
+        // For simplicity, returning empty vec
+        Ok(Vec::new())
+    }
+
+    async fn get_token(&self, token_address: Address) -> Result<Token, Error> {
+        // Placeholder implementation
+        Ok(Token {
+            address: token_address,
+            symbol: "DUMMY".to_string(),
+            name: "Dummy Token".to_string(),
+            decimals: 18,
+            chain_id: self.chain_id(),
+        })
+    }
+
+    async fn get_liquidity_distribution(
+        &self,
         pool_address: Address,
-    ) -> Pin<Box<dyn Future<Output = Result<Pool, Error>> + Send + 'a>> {
-        Box::pin(async move {
-            // Placeholder implementation
-            let token0 = Token {
-                address: Address::ZERO,
-                symbol: "DUMMY0".to_string(),
-                name: "Dummy Token 0".to_string(),
-                decimals: 18,
-                chain_id: self.chain_id(),
-            };
+    ) -> Result<LiquidityDistribution, Error> {
+        // Simple placeholder implementation with a single price point
+        let pool = self.get_pool(pool_address).await?;
+        let token0 = &pool.tokens[0];
+        let token1 = &pool.tokens[1];
 
-            let token1 = Token {
-                address: Address::ZERO,
-                symbol: "DUMMY1".to_string(),
-                name: "Dummy Token 1".to_string(),
-                decimals: 18,
-                chain_id: self.chain_id(),
-            };
+        // Dummy price and liquidity values
+        let price = 1.0;
+        let token0_liquidity = 1000.0;
+        let token1_liquidity = 1000.0;
 
-            Ok(Pool {
-                address: pool_address,
-                dex_name: self.name().to_string(),
-                chain_id: self.chain_id(),
-                tokens: vec![token0, token1],
-                creation_block: 0,
-                creation_timestamp: Utc::now(),
-                last_updated_block: 0,
-                last_updated_timestamp: Utc::now(),
-            })
+        let price_level = PriceLiquidity {
+            price,
+            token0_liquidity,
+            token1_liquidity,
+            timestamp: Utc::now(),
+        };
+
+        Ok(LiquidityDistribution {
+            token0: token0.clone(),
+            token1: token1.clone(),
+            dex_name: self.name().to_string(),
+            chain_id: self.chain_id(),
+            price_levels: vec![price_level],
+            timestamp: Utc::now(),
         })
     }
 
-    fn get_pools_for_token<'a>(
-        &'a self,
-        token_address: Address,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<Pool>, Error>> + Send + 'a>> {
-        Box::pin(async move {
-            // This would require scanning events or getting pools from an indexer
-            // For simplicity, returning empty vec
-            Ok(Vec::new())
-        })
-    }
-
-    fn get_token<'a>(
-        &'a self,
-        token_address: Address,
-    ) -> Pin<Box<dyn Future<Output = Result<Token, Error>> + Send + 'a>> {
-        Box::pin(async move {
-            // Placeholder implementation
-            Ok(Token {
-                address: token_address,
-                symbol: "DUMMY".to_string(),
-                name: "Dummy Token".to_string(),
-                decimals: 18,
-                chain_id: self.chain_id(),
-            })
-        })
-    }
-
-    fn get_liquidity_distribution<'a>(
-        &'a self,
-        pool_address: Address,
-    ) -> Pin<Box<dyn Future<Output = Result<LiquidityDistribution, Error>> + Send + 'a>> {
-        Box::pin(async move {
-            // Simple placeholder implementation with a single price point
-            let pool = self.get_pool(pool_address).await?;
-            let token0 = &pool.tokens[0];
-            let token1 = &pool.tokens[1];
-
-            // Dummy price and liquidity values
-            let price = 1.0;
-            let token0_liquidity = 1000.0;
-            let token1_liquidity = 1000.0;
-
-            let price_level = PriceLiquidity {
-                price,
-                token0_liquidity,
-                token1_liquidity,
-                timestamp: Utc::now(),
-            };
-
-            Ok(LiquidityDistribution {
-                token0: token0.clone(),
-                token1: token1.clone(),
-                dex_name: self.name().to_string(),
-                chain_id: self.chain_id(),
-                price_levels: vec![price_level],
-                timestamp: Utc::now(),
-            })
-        })
-    }
-
-    fn calculate_swap_impact<'a>(
-        &'a self,
+    async fn calculate_swap_impact(
+        &self,
         _pool_address: Address,
         _token_in: Address,
         _amount_in: f64,
-    ) -> Pin<Box<dyn Future<Output = Result<f64, Error>> + Send + 'a>> {
-        Box::pin(async move {
-            // Placeholder implementation
-            Ok(0.0)
-        })
+    ) -> Result<f64, Error> {
+        // Placeholder implementation
+        Ok(0.0)
     }
 }

@@ -8,11 +8,11 @@ use crate::error::Error;
 use crate::models::{LiquidityDistribution, Pool, Token};
 use crate::providers::EthereumProvider;
 use alloy_primitives::Address;
-use std::future::Future;
-use std::pin::Pin;
+use async_trait::async_trait;
 use std::sync::Arc;
 
 /// Common interface for all DEX implementations
+#[async_trait]
 pub trait DexProtocol: Send + Sync {
     /// Get the name of the DEX
     fn name(&self) -> &str;
@@ -27,36 +27,27 @@ pub trait DexProtocol: Send + Sync {
     fn provider(&self) -> Arc<EthereumProvider>;
 
     /// Get pool details for a specific pool address
-    fn get_pool<'a>(
-        &'a self,
-        pool_address: Address,
-    ) -> Pin<Box<dyn Future<Output = Result<Pool, Error>> + Send + 'a>>;
+    async fn get_pool(&self, pool_address: Address) -> Result<Pool, Error>;
 
     /// Get all pools for a specific token
-    fn get_pools_for_token<'a>(
-        &'a self,
-        token_address: Address,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<Pool>, Error>> + Send + 'a>>;
+    async fn get_pools_for_token(&self, token_address: Address) -> Result<Vec<Pool>, Error>;
 
     /// Get token details for a specific token address
-    fn get_token<'a>(
-        &'a self,
-        token_address: Address,
-    ) -> Pin<Box<dyn Future<Output = Result<Token, Error>> + Send + 'a>>;
+    async fn get_token(&self, token_address: Address) -> Result<Token, Error>;
 
     /// Get the liquidity distribution for a specific pool
-    fn get_liquidity_distribution<'a>(
-        &'a self,
+    async fn get_liquidity_distribution(
+        &self,
         pool_address: Address,
-    ) -> Pin<Box<dyn Future<Output = Result<LiquidityDistribution, Error>> + Send + 'a>>;
+    ) -> Result<LiquidityDistribution, Error>;
 
     /// Calculate how a swap would impact prices
-    fn calculate_swap_impact<'a>(
-        &'a self,
+    async fn calculate_swap_impact(
+        &self,
         pool_address: Address,
         token_in: Address,
         amount_in: f64,
-    ) -> Pin<Box<dyn Future<Output = Result<f64, Error>> + Send + 'a>>;
+    ) -> Result<f64, Error>;
 }
 
 pub fn get_dex_by_name(
