@@ -40,11 +40,6 @@ impl DexProtocol for Balancer {
         Ok(Vec::new())
     }
 
-    async fn get_token(&self, token_address: Address) -> Result<Token, Error> {
-        // Placeholder
-        Err(Error::Unknown("Not implemented".to_string()))
-    }
-
     async fn get_liquidity_distribution(
         &self,
         pool_address: Address,

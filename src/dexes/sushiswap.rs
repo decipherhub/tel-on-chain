@@ -74,16 +74,6 @@ impl DexProtocol for Sushiswap {
         Ok(Vec::new())
     }
 
-    async fn get_token(&self, token_address: Address) -> Result<Token, Error> {
-        Ok(Token {
-            address: token_address,
-            symbol: "DUMMY".to_string(),
-            name: "Dummy Token".to_string(),
-            decimals: 18,
-            chain_id: self.chain_id(),
-        })
-    }
-
     async fn get_liquidity_distribution(
         &self,
         pool_address: Address,

@@ -3,6 +3,7 @@ pub mod curve;
 pub mod sushiswap;
 pub mod uniswap_v2;
 pub mod uniswap_v3;
+pub mod utils;
 
 use crate::error::Error;
 use crate::models::{LiquidityDistribution, Pool, Token};
@@ -33,7 +34,10 @@ pub trait DexProtocol: Send + Sync {
     async fn get_pools_for_token(&self, token_address: Address) -> Result<Vec<Pool>, Error>;
 
     /// Get token details for a specific token address
-    async fn get_token(&self, token_address: Address) -> Result<Token, Error>;
+    async fn get_token(&self, token_address: Address) -> Result<Token, Error> {
+        // Default implementation uses the shared utils implementation
+        utils::get_token(self.provider(), token_address, self.chain_id()).await
+    }
 
     /// Get the liquidity distribution for a specific pool
     async fn get_liquidity_distribution(
