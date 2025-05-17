@@ -69,24 +69,143 @@ By structuring and providing this data, we can democratize access to valuable tr
 
 ## Getting Started
 
-[Installation and setup instructions will go here]
+### Prerequisites
+
+- Rust 1.89.0
+- SQLite
+
+### Setup
+
+1. Clone the repository:
+
+   ```
+   git clone https://github.com/decipherhub/tel-on-chain.git
+   cd tel-on-chain
+   ```
+
+2. Build the project:
+   ```
+   cargo build
+   ```
+
+## Running the Application
+
+### Starting the API Server
+
+To start the API server:
+
+```
+cargo run --bin tel-on-chain api
+```
+
+The API server will be available at `http://localhost:8081`.
+
+### Running the Indexer
+
+To run the indexer for all configured DEXs:
+
+```
+cargo run --bin tel-on-chain index
+```
+
+To index a specific pool:
+
+```
+cargo run --bin tel-on-chain index --dex uniswap_v3 --pool 0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640
+```
+
+### Configuration
+
+The configuration is stored in `config/default.toml`. You can specify:
+
+- RPC endpoints for different blockchains
+- Database connection settings
+- API server settings
+- DEXes to monitor and their factory addresses
+
+### Project Structure
+
+- `src/api`: API server implementation
+- `src/config`: Configuration handling
+- `src/core`: Core analysis logic (liquidity walls, support/resistance)
+- `src/dexes`: DEX protocol adapters (Uniswap V2/V3, Sushiswap, etc.)
+- `src/indexer`: Blockchain data indexing logic
+- `src/models`: Data structures and types
+- `src/providers`: Blockchain RPC providers
+- `src/storage`: Database interaction
+- `src/utils`: Utility functions
+
+### API Documentation
+
+API documentation is available at [docs/API_V1.md](docs/API_V1.md).
+
+### Running the Debug UI
+
+Built with egui that connects to the API and shows visualizations:
+
+```
+cargo run --bin tel-on-chain-ui
+```
+
+The UI allows you to:
+
+- View liquidity walls for token pairs
+- Check database contents
+- Monitor indexer status
+
+## API Documentation
+
+### Endpoints
+
+- `GET /health` - Health check
+- `GET /v1/liquidity/walls/:token0/:token1` - Get liquidity walls for a token pair
+- `GET /v1/tokens/:chain_id/:address` - Get token information
+- `GET /v1/pools/:dex/:chain_id` - Get pools for a specific DEX on a chain
+
+## Configuration
+
+Tel-On-Chain uses a configuration file (config.toml) to specify RPC endpoints, DEXs to index, and other settings.
+
+Example configuration:
+
+```toml
+[database]
+url = "data/database.db"
+
+[api]
+host = "127.0.0.1"
+port = 8080
+
+[indexer]
+interval_secs = 300
+
+[ethereum]
+url = "https://eth-mainnet.alchemyapi.io/v2/YOUR_API_KEY"
+
+# DEX configurations
+[[dexes]]
+name = "uniswap_v3"
+chain_id = 1
+factory_address = "0x1F98431c8aD98523631AE4a59f267346ea31F984"
+enabled = true
+```
 
 ## Team
 
 - [guzus](https://github.com/guzus)
-    - CS major at Seoul National University
-    - 3 years of experience in DeFi and MEV at a crypto trading firm
-    - Winner at ETHGlobal Bangkok 2024 and Seoulana 2025 hackathons
+  - CS major at Seoul National University
+  - 3 years of experience in DeFi and MEV at a crypto trading firm
+  - Winner at ETHGlobal Bangkok 2024 and Seoulana 2025 hackathons
 - [0xGh-st](https://github.com/0xGh-st)
-    - Dept. Of Financial Security, Blockchain major(master degree) at Korea University
-    - Upside Academy(Upbit X Chainlight) 1st
-    - Upbit D Conference(UDC) 2024 Speaker
-    - Best Of the Best 12th Vulnerability Analysis
-    - Ethcon Korea 2024 CTF Section Organizer
+  - Dept. Of Financial Security, Blockchain major(master degree) at Korea University
+  - Upside Academy(Upbit X Chainlight) 1st
+  - Upbit D Conference(UDC) 2024 Speaker
+  - Best Of the Best 12th Vulnerability Analysis
+  - Ethcon Korea 2024 CTF Section Organizer
 - [lee2020090791](https://github.com/lee2020090791)
-    - CS major at Hanyang University
-    - 1 year internship on OSDC labs
-    - Blockchain core developer
+  - CS major at Hanyang University
+  - 1 year internship on OSDC labs
+  - Blockchain core developer
 
 ## License
 
