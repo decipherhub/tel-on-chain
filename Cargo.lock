@@ -5802,7 +5802,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 
 [[package]]
-name = "tel-on-chain"
+name = "tel-api"
+version = "0.1.0"
+dependencies = [
+ "alloy-primitives",
+ "anyhow",
+ "axum",
+ "chrono",
+ "clap",
+ "serde",
+ "serde_json",
+ "tel-core",
+ "tokio",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "tel-core"
 version = "0.1.0"
 dependencies = [
  "alloy-contract",
@@ -5815,16 +5833,10 @@ dependencies = [
  "alloy-transport-http",
  "anyhow",
  "async-trait",
- "axum",
  "chrono",
- "clap",
  "config",
- "eframe",
- "egui",
- "egui_plot",
  "num-bigint",
  "num-traits",
- "poll-promise",
  "reqwest 0.11.27",
  "rusqlite",
  "rust_decimal",
@@ -5832,7 +5844,25 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
- "tower-http",
+ "tracing",
+]
+
+[[package]]
+name = "tel-ui"
+version = "0.1.0"
+dependencies = [
+ "alloy-primitives",
+ "chrono",
+ "eframe",
+ "egui",
+ "egui_plot",
+ "poll-promise",
+ "reqwest 0.11.27",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tel-core",
+ "tokio",
  "tracing",
  "tracing-subscriber",
 ]

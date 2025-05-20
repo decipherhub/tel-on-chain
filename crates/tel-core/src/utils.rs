@@ -1,10 +1,12 @@
-use crate::error::Error;
-use crate::Address;
+use alloy_primitives::Address;
+use crate::{Error, Result};
 use std::str::FromStr;
 
-/// Convert a string to an address
-pub fn parse_address(address_str: &str) -> Result<Address, Error> {
-    Address::from_str(address_str).map_err(|_| Error::InvalidAddress(address_str.to_string()))
+/// Parse a string into an Address.
+/// The string should be a valid hex string with or without the "0x" prefix.
+pub fn parse_address(address_str: &str) -> Result<Address> {
+    let address_str = address_str.trim_start_matches("0x");
+    Address::from_str(address_str).map_err(|e| Error::InvalidAddress(e.to_string()))
 }
 
 /// Calculate price impact for constant product AMM

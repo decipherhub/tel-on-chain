@@ -34,4 +34,13 @@ pub enum Error {
 
     #[error("Unknown DEX: {0}")]
     UnknownDEX(String),
+
+    #[error("Not implemented")]
+    NotImplemented,
+}
+
+impl From<rusqlite::Error> for Error {
+    fn from(err: rusqlite::Error) -> Self {
+        Error::DatabaseError(err.to_string())
+    }
 }

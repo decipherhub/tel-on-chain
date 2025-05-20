@@ -1,6 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use tel_on_chain::{api, config, indexer};
+use tel_core::config;
+use tel_api::{api, indexer};
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
@@ -39,7 +40,7 @@ async fn main() -> Result<()> {
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;
 
-    info!("Starting tel-on-chain");
+    info!("Starting tel-api");
 
     let cli = Cli::parse();
 
@@ -61,4 +62,4 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
-}
+} 

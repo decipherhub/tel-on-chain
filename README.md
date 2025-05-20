@@ -90,68 +90,39 @@ By structuring and providing this data, we can democratize access to valuable tr
 
 ## Running the Application
 
-### Starting the API Server
+The project provides two main binaries:
 
-To start the API server:
+### API Server
 
-```
-cargo run --bin tel-on-chain api
-```
+To run the API server:
 
-The API server will be available at `http://localhost:8081`.
-
-### Running the Indexer
-
-To run the indexer for all configured DEXs:
-
-```
-cargo run --bin tel-on-chain index
+```bash
+cargo run -p tel-api
 ```
 
-To index a specific pool:
+This will start the API server that provides data for the visualization.
 
-```
-cargo run --bin tel-on-chain index --dex uniswap_v3 --pool 0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640
-```
+### GUI Application
 
-### Configuration
+To run the GUI application:
 
-The configuration is stored in `config/default.toml`. You can specify:
-
-- RPC endpoints for different blockchains
-- Database connection settings
-- API server settings
-- DEXes to monitor and their factory addresses
-
-### Project Structure
-
-- `src/api`: API server implementation
-- `src/config`: Configuration handling
-- `src/core`: Core analysis logic (liquidity walls, support/resistance)
-- `src/dexes`: DEX protocol adapters (Uniswap V2/V3, Sushiswap, etc.)
-- `src/indexer`: Blockchain data indexing logic
-- `src/models`: Data structures and types
-- `src/providers`: Blockchain RPC providers
-- `src/storage`: Database interaction
-- `src/utils`: Utility functions
-
-### API Documentation
-
-API documentation is available at [docs/API_V1.md](docs/API_V1.md).
-
-### Running the Debug UI
-
-Built with egui that connects to the API and shows visualizations:
-
-```
-cargo run --bin tel-on-chain-ui
+```bash
+cargo run -p tel-ui
 ```
 
-The UI allows you to:
+This will launch the graphical interface for visualizing buy/sell walls.
 
-- View liquidity walls for token pairs
-- Check database contents
-- Monitor indexer status
+### Development
+
+For development, you can run both the API server and GUI application in separate terminals:
+
+```bash
+# Terminal 1 - API Server
+cargo run -p tel-api
+
+# Terminal 2 - GUI Application
+cargo run -p tel-ui
+```
 
 ## API Documentation
 
