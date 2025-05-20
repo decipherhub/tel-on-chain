@@ -92,12 +92,20 @@ By structuring and providing this data, we can democratize access to valuable tr
 
 The project provides two main binaries:
 
+### Indexer
+
+To run the indexer:
+
+```bash
+cargo run -bin tel-indexer
+```
+
 ### API Server
 
 To run the API server:
 
 ```bash
-cargo run -p tel-api
+cargo run -bin tel-api
 ```
 
 This will start the API server that provides data for the visualization.
@@ -107,7 +115,7 @@ This will start the API server that provides data for the visualization.
 To run the GUI application:
 
 ```bash
-cargo run -p tel-ui
+cargo run -bin tel-ui
 ```
 
 This will launch the graphical interface for visualizing buy/sell walls.
@@ -117,11 +125,14 @@ This will launch the graphical interface for visualizing buy/sell walls.
 For development, you can run both the API server and GUI application in separate terminals:
 
 ```bash
-# Terminal 1 - API Server
-cargo run -p tel-api
+# Terminal 1 - Indexer
+cargo run -bin tel-indexer
 
-# Terminal 2 - GUI Application
-cargo run -p tel-ui
+# Terminal 2 - API Server
+cargo run -bin tel-api
+
+# Terminal 3 - GUI Application
+cargo run -bin tel-ui
 ```
 
 ## API Documentation

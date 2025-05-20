@@ -249,29 +249,25 @@ pub async fn run_indexer(
             {
                 Ok(distribution) => {
                     info!(
-                        "Got liquidity distribution with {} price levels",
-                        distribution.price_levels.len()
+                        "Got liquidity distribution for pool {} on {}",
+                        pool_address, dex_name
                     );
-                    // Store distribution
-                    if let Err(e) = storage::save_liquidity_distribution_async(
-                        indexer.storage.clone(),
-                        distribution,
-                    )
-                    .await
-                    {
-                        error!("Failed to store liquidity distribution: {}", e);
-                    }
+                    storage::save_liquidity_distribution_async(indexer.storage.clone(), distribution)
+                        .await?;
                 }
                 Err(e) => {
-                    error!("Failed to get liquidity distribution: {}", e);
+                    error!(
+                        "Failed to get liquidity distribution for pool {} on {}: {}",
+                        pool_address, dex_name, e
+                    );
                 }
             }
         }
         _ => {
-            // Run the continuous indexing process
+            info!("Indexer running in continuous mode");
             indexer.start().await?;
         }
     }
 
     Ok(())
-}
+} 

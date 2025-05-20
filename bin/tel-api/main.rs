@@ -1,35 +1,16 @@
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use tel_core::config;
-use tel_api::{api, indexer};
+use tel_api::api;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    #[command(subcommand)]
-    command: Commands,
-}
-
-#[derive(Subcommand)]
-enum Commands {
-    /// Start the API server
-    Api {
-        #[arg(short, long, default_value = "config/default.toml")]
-        config: String,
-    },
-    /// Run the indexer to collect and process DEX data
-    Index {
-        #[arg(short, long, default_value = "config/default.toml")]
-        config: String,
-
-        #[arg(short, long)]
-        dex: Option<String>,
-
-        #[arg(short, long)]
-        pair: Option<String>,
-    },
+    /// Path to config file
+    #[arg(short, long, default_value = "config/default.toml")]
+    config: String,
 }
 
 #[tokio::main]
@@ -43,23 +24,8 @@ async fn main() -> Result<()> {
     info!("Starting tel-api");
 
     let cli = Cli::parse();
-
-    match cli.command {
-        Commands::Api {
-            config: config_path,
-        } => {
-            let config = config::load_config(&config_path)?;
-            api::run_server(config).await?;
-        }
-        Commands::Index {
-            config: config_path,
-            dex,
-            pair,
-        } => {
-            let config = config::load_config(&config_path)?;
-            indexer::run_indexer(config, dex, pair).await?;
-        }
-    }
+    let config = config::load_config(&cli.config)?;
+    api::run_server(config).await?;
 
     Ok(())
 } 
