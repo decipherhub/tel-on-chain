@@ -1,0 +1,3 @@
+[workspace]
+members = ["crates/tel-core", "crates/tel-api", "crates/tel-ui", "crates/tel-indexer"]
+resolver = "2"

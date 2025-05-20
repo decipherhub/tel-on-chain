@@ -69,24 +69,125 @@ By structuring and providing this data, we can democratize access to valuable tr
 
 ## Getting Started
 
-[Installation and setup instructions will go here]
+### Prerequisites
+
+- Rust 1.89.0
+- SQLite
+
+### Setup
+
+1. Clone the repository:
+
+   ```
+   git clone https://github.com/decipherhub/tel-on-chain.git
+   cd tel-on-chain
+   ```
+
+2. Build the project:
+   ```
+   cargo build
+   ```
+
+## Running the Application
+
+The project provides two main binaries:
+
+### Indexer
+
+To run the indexer:
+
+```bash
+cargo run -bin tel-indexer
+```
+
+### API Server
+
+To run the API server:
+
+```bash
+cargo run -bin tel-api
+```
+
+This will start the API server that provides data for the visualization.
+
+### GUI Application
+
+To run the GUI application:
+
+```bash
+cargo run -bin tel-ui
+```
+
+This will launch the graphical interface for visualizing buy/sell walls.
+
+### Development
+
+For development, you can run both the API server and GUI application in separate terminals:
+
+```bash
+# Terminal 1 - Indexer
+cargo run -bin tel-indexer
+
+# Terminal 2 - API Server
+cargo run -bin tel-api
+
+# Terminal 3 - GUI Application
+cargo run -bin tel-ui
+```
+
+## API Documentation
+
+### Endpoints
+
+- `GET /health` - Health check
+- `GET /v1/liquidity/walls/:token0/:token1` - Get liquidity walls for a token pair
+- `GET /v1/tokens/:chain_id/:address` - Get token information
+- `GET /v1/pools/:dex/:chain_id` - Get pools for a specific DEX on a chain
+
+## Configuration
+
+Tel-On-Chain uses a configuration file (config.toml) to specify RPC endpoints, DEXs to index, and other settings.
+
+Example configuration:
+
+```toml
+[database]
+url = "data/database.db"
+
+[api]
+host = "127.0.0.1"
+port = 8080
+
+[indexer]
+interval_secs = 300
+
+[ethereum]
+url = "https://eth-mainnet.alchemyapi.io/v2/YOUR_API_KEY"
+
+# DEX configurations
+[[dexes]]
+name = "uniswap_v3"
+chain_id = 1
+factory_address = "0x1F98431c8aD98523631AE4a59f267346ea31F984"
+enabled = true
+```
 
 ## Team
 
 - [guzus](https://github.com/guzus)
-    - CS major at Seoul National University
-    - 3 years of experience in DeFi and MEV at a crypto trading firm
-    - Winner at ETHGlobal Bangkok 2024 and Seoulana 2025 hackathons
+  - CS major at Seoul National University
+  - 3 years of experience in DeFi and MEV at a crypto trading firm
+  - Winner at ETHGlobal Bangkok 2024 and Seoulana 2025 hackathons
 - [0xGh-st](https://github.com/0xGh-st)
-    - Dept. Of Financial Security, Blockchain major(master degree) at Korea University
-    - Upside Academy(Upbit X Chainlight) 1st
-    - Upbit D Conference(UDC) 2024 Speaker
-    - Best Of the Best 12th Vulnerability Analysis
-    - Ethcon Korea 2024 CTF Section Organizer
+  - Dept. Of Financial Security, Blockchain major(master degree) at Korea University
+  - Upside Academy(Upbit X Chainlight) 1st
+  - Upbit D Conference(UDC) 2024 Speaker
+  - Best Of the Best 12th Vulnerability Analysis
+  - Ethcon Korea 2024 CTF Section Organizer
 - [lee2020090791](https://github.com/lee2020090791)
-    - CS major at Hanyang University
-    - 1 year internship on OSDC labs
-    - Blockchain core developer
+  - CS major at Hanyang University
+  - 1 year internship on OSDC labs
+  - Blockchain core developer
 
 ## License
 
