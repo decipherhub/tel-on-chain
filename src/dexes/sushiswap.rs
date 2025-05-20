@@ -70,7 +70,7 @@ impl DexProtocol for Sushiswap {
         })
     }
 
-    async fn get_pools_for_token(&self, _token_address: Address) -> Result<Vec<Pool>, Error> {
+    async fn get_all_pools(&self) -> Result<Vec<Pool>, Error> {
         Ok(Vec::new())
     }
 

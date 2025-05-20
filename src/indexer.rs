@@ -77,7 +77,7 @@ impl Indexer {
                 info!("Processing DEX: {}", dex_name);
 
                 // Get pools for this DEX
-                match dex.get_pools_for_token(Address::default()).await {
+                match dex.get_all_pools().await {
                     Ok(pools) => {
                         info!("Found {} pools for {}", pools.len(), dex_name);
 

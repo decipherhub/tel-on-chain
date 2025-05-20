@@ -35,7 +35,7 @@ impl DexProtocol for Balancer {
         Err(Error::Unknown("Not implemented".to_string()))
     }
 
-    async fn get_pools_for_token(&self, token_address: Address) -> Result<Vec<Pool>, Error> {
+    async fn get_all_pools(&self) -> Result<Vec<Pool>, Error> {
         // Placeholder
         Ok(Vec::new())
     }

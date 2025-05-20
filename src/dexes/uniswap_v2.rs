@@ -79,7 +79,7 @@ impl DexProtocol for UniswapV2 {
         })
     }
 
-    async fn get_pools_for_token(&self, _token_address: Address) -> Result<Vec<Pool>, Error> {
+    async fn get_all_pools(&self) -> Result<Vec<Pool>, Error> {
         // This would require scanning events or getting pools from an indexer
         // For simplicity, returning empty vec
         Ok(Vec::new())

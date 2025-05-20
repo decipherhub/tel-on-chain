@@ -30,8 +30,8 @@ pub trait DexProtocol: Send + Sync {
     /// Get pool details for a specific pool address
     async fn get_pool(&self, pool_address: Address) -> Result<Pool, Error>;
 
-    /// Get all pools for a specific token
-    async fn get_pools_for_token(&self, token_address: Address) -> Result<Vec<Pool>, Error>;
+    /// Get all pools
+    async fn get_all_pools(&self) -> Result<Vec<Pool>, Error>;
 
     /// Get token details for a specific token address
     async fn get_token(&self, token_address: Address) -> Result<Token, Error> {
