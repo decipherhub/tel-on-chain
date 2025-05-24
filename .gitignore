@@ -9,6 +9,7 @@
 # Config files except default
 /config/*
 !/config/default.toml
+!/config/config.toml
 
 # IDE files
 .idea/
