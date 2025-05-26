@@ -3,10 +3,19 @@ use crate::error::Error;
 use crate::models::{LiquidityDistribution, Pool, PriceLiquidity, Token};
 use crate::providers::EthereumProvider;
 use alloy_primitives::Address;
+use alloy_sol_types::sol;
 use async_trait::async_trait;
 use chrono::Utc;
 use std::sync::Arc;
 
+sol! {
+    #[sol(rpc)]
+    interface IUniswapV2Pair {
+        function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
+        function token0() external view returns (address);
+        function token1() external view returns (address);
+    }
+}
 pub struct UniswapV2 {
     provider: Arc<EthereumProvider>,
     factory_address: Address,
@@ -21,10 +30,10 @@ impl UniswapV2 {
     }
 
     // Helper method to get reserves from a pool - simplified version
-    async fn get_reserves(&self, _pool_address: Address) -> Result<(u128, u128, u32), Error> {
+    async fn get_reserves(&self, pool_address: Address) -> Result<(u128, u128, u32), Error> {
         // This is a placeholder, in production we'd actually call the contract
         // Simplified for compatibility
-        // (https://github.com/Uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol)
+        // https://github.com/Uniswap/v2-core/blob/master/contracts/interfaces/IUniswapV2Pair.sol
         let data = self
             .provider
             .encode_function_data(
