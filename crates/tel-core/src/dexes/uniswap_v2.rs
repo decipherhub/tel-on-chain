@@ -133,4 +133,9 @@ impl DexProtocol for UniswapV2 {
         // Simplified placeholder implementation
         Ok(0.0)
     }
+    
+    async fn get_token(&self, token_address: Address) -> Result<Token, Error> {
+        // Default implementation uses the shared utils implementation
+        super::utils::get_token(self.provider(), token_address, self.chain_id()).await
+    }
 }
