@@ -2,58 +2,51 @@ use crate::dexes::DexProtocol;
 use crate::error::Error;
 use crate::models::{LiquidityDistribution, Pool, PriceLiquidity, Token};
 use crate::providers::EthereumProvider;
+use crate::storage::{Storage, SqliteStorage};
 use alloy_primitives::Address;
 use alloy_sol_types::sol;
 use async_trait::async_trait;
 use chrono::Utc;
+use IUniswapV2Pair::getReservesReturn;
 use std::sync::Arc;
 
 sol! {
     #[sol(rpc)]
     interface IUniswapV2Pair {
         function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
-        function token0() external view returns (address);
-        function token1() external view returns (address);
     }
 }
+
 pub struct UniswapV2 {
     provider: Arc<EthereumProvider>,
     factory_address: Address,
+    storage: Arc<dyn Storage>,
 }
 
 impl UniswapV2 {
     pub fn new(provider: Arc<EthereumProvider>, factory_address: Address) -> Self {
+        let storage = SqliteStorage::new("tel_on_chain.db")
+            .expect("Failed to initialize SqliteStorage");
+        let storage = Arc::new(storage);
         Self {
             provider,
             factory_address,
+            storage,
         }
     }
 
     // Helper method to get reserves from a pool - simplified version
     async fn get_reserves(&self, pool_address: Address) -> Result<(u128, u128, u32), Error> {
-        // This is a placeholder, in production we'd actually call the contract
-        // Simplified for compatibility
-        // https://github.com/Uniswap/v2-core/blob/master/contracts/interfaces/IUniswapV2Pair.sol
-        let data = self
-            .provider
-            .encode_function_data(
-                "getReserves",         // ABI 함수 이름
-                &[],                    // 파라미터 없음
-            )?;
-
-        let raw = self
-            .provider
-            .call(
-                pool_address,          // 컨트랙트 주소
-                data,                  // 호출 데이터
-                None,                  // 옵션(가스, 블록) 생략
-            )
+        // 1) Pair 컨트랙트 인터페이스 생성
+        let contract = IUniswapV2Pair::new(pool_address, self.provider.provider());
+        let result: getReservesReturn = contract.getReserves()
+            .call()
             .await?;
-
-        let (reserve0, reserve1, block_timestamp): (u128, u128, u32) =
-            self.provider.decode_output(&raw)?;
-
-        Ok((reserve0, reserve1, block_timestamp))
+        // let (reserve0, reserve1, block_timestamp_last) = 
+        // contract.getReserves()
+        // .call()
+        // .await?;
+        Ok((reserve0 as u128, reserve1 as u128, block_timestamp_last))
     }
 }
 
@@ -95,36 +88,9 @@ impl DexProtocol for UniswapV2 {
         //     decimals: 18,
         //     chain_id: self.chain_id(),
         // };
-
-        //(https://github.com/Uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol)
-
-        let data0 = self.provider.encode_function_data("token0", &[])?;
-        let data1 = self.provider.encode_function_data("token1", &[])?;
-
-        // eth_call로 토큰 주소 획득
-        let raw0 = self.provider.call(pool_address, data0, None).await?;
-        let raw1 = self.provider.call(pool_address, data1, None).await?;
-        let token0_address: Address = self.provider.decode_output(&raw0)?;
-        let token1_address: Address = self.provider.decode_output(&raw1)?;
-
-        // token metadata 조회 (symbol, name, decimals)
-        let token0 = super::utils::get_token(self.provider.clone(), token0_address, self.chain_id()).await?;
-        let token1 = super::utils::get_token(self.provider.clone(), token1_address, self.chain_id()).await?;
-
-        // pool 생성/업데이트 블록 및 타임스탬프 조회
-        //    - optional: getReserves 호출의 세 번째 리턴값(blockTimestampLast) 사용
-        let (_, _, last_ts) = self.get_reserves(pool_address).await?;
-
-        Ok(Pool {
-            address: pool_address,
-            dex_name: self.name().to_string(),
-            chain_id: self.chain_id(),
-            tokens: vec![token0, token1],
-            creation_block: 0,
-            creation_timestamp: Utc::now(),
-            last_updated_block: 0,
-            last_updated_timestamp: Utc::now(),
-        })
+        self.storage.get_pool(pool_address)
+            .map_err(|_| Error::DatabaseError(pool_address.to_string()));
+        
     }
 
     async fn get_all_pools(&self) -> Result<Vec<Pool>, Error> {
@@ -169,7 +135,7 @@ impl DexProtocol for UniswapV2 {
         for i in 0..num_buckets{
             let mid_price = price * (1.0 + i as f64 - mid * bucket_width);
             let (liquidity0, liquidity1) = if(mid_price - price).abs() <= (bucket_width/2.0) {
-                (reserve0, reserve1)
+                (reserve0_float, reserve1_float)
             } else {
                 (0.0, 0.0)
             };
