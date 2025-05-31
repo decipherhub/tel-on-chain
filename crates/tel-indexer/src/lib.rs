@@ -1,16 +1,16 @@
+use crate::storage::Storage;
+use alloy_primitives::Address;
+use std::collections::HashMap;
+use std::str::FromStr;
+use std::sync::Arc;
+use std::time::Duration;
 use tel_core::config::Config;
 use tel_core::dexes::{get_dex_by_name, DexProtocol};
 use tel_core::error::Error;
 use tel_core::models::{LiquidityDistribution, Pool, Token};
 use tel_core::providers::ProviderManager;
 use tel_core::storage;
-use tel_core::storage::Storage;
 use tel_core::storage::SqliteStorage;
-use alloy_primitives::Address;
-use std::collections::HashMap;
-use std::str::FromStr;
-use std::sync::Arc;
-use std::time::Duration;
 use tokio::time;
 use tracing::{debug, error, info, warn};
 
@@ -42,7 +42,9 @@ impl Indexer {
                 let factory_address = Address::from_str(&dex_config.factory_address)
                     .map_err(|_| Error::InvalidAddress(dex_config.factory_address.clone()))?;
 
-                if let Some(dex) = get_dex_by_name(&dex_config.name, provider, factory_address) {
+                if let Some(dex) =
+                    get_dex_by_name(&dex_config.name, provider, factory_address, storage.clone())
+                {
                     dexes.insert(dex_config.name.clone(), dex);
                 } else {
                     warn!("DEX implementation not found for: {}", dex_config.name);
@@ -85,11 +87,11 @@ impl Indexer {
                         for pool in pools {
                             match self.process_pool(&pool).await {
                                 Ok(_) => {
-                                    debug!("Processed pool {} on {}", pool.address, pool.dex_name)
+                                    debug!("Processed pool {} on {}", pool.address, pool.dex)
                                 }
                                 Err(e) => warn!(
                                     "Failed to process pool {} on {}: {}",
-                                    pool.address, pool.dex_name, e
+                                    pool.address, pool.dex, e
                                 ),
                             }
                         }
@@ -106,8 +108,8 @@ impl Indexer {
         // Get DEX implementation
         let dex = self
             .dexes
-            .get(&pool.dex_name)
-            .ok_or_else(|| Error::UnknownDEX(pool.dex_name.clone()))?;
+            .get(&pool.dex)
+            .ok_or_else(|| Error::UnknownDEX(pool.dex.clone()))?;
 
         // Get and store liquidity distribution
         let distribution = dex.get_liquidity_distribution(pool.address).await?;
@@ -241,7 +243,7 @@ pub async fn run_indexer(
             let pool = indexer
                 .index_pool(&dex_name, &pool_address, chain_id)
                 .await?;
-            info!("Indexed pool: {} on {}", pool.address, pool.dex_name);
+            info!("Indexed pool: {} on {}", pool.address, pool.dex);
 
             match indexer
                 .get_liquidity_distribution(&dex_name, &pool_address)
@@ -252,8 +254,11 @@ pub async fn run_indexer(
                         "Got liquidity distribution for pool {} on {}",
                         pool_address, dex_name
                     );
-                    storage::save_liquidity_distribution_async(indexer.storage.clone(), distribution)
-                        .await?;
+                    storage::save_liquidity_distribution_async(
+                        indexer.storage.clone(),
+                        distribution,
+                    )
+                    .await?;
                 }
                 Err(e) => {
                     error!(
@@ -270,4 +275,4 @@ pub async fn run_indexer(
     }
 
     Ok(())
-} 
+}

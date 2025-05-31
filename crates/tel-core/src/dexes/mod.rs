@@ -8,9 +8,10 @@ pub mod utils;
 use crate::error::Error;
 use crate::models::{LiquidityDistribution, Pool, Token};
 use crate::providers::EthereumProvider;
+use crate::storage::Storage;
 use alloy_primitives::Address;
 use async_trait::async_trait;
-use std::sync::Arc;
+use std::sync::Arc; // 이미 있다면 중복 제거
 
 /// Common interface for all DEX implementations
 #[async_trait]
@@ -58,11 +59,13 @@ pub fn get_dex_by_name(
     name: &str,
     provider: Arc<EthereumProvider>,
     factory_address: Address,
+    storage: Arc<dyn Storage>,
 ) -> Option<Box<dyn DexProtocol>> {
     match name {
         "uniswap_v2" => Some(Box::new(uniswap_v2::UniswapV2::new(
-            provider,
-            factory_address,
+            provider.clone(), // Arc<EthereumProvider>
+            factory_address,  // Address
+            storage.clone(),  // Arc<dyn Storage>
         ))),
         "uniswap_v3" => Some(Box::new(uniswap_v3::UniswapV3::new(
             provider,
