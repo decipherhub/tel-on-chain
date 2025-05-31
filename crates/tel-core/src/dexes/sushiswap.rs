@@ -60,7 +60,7 @@ impl DexProtocol for Sushiswap {
 
         Ok(Pool {
             address: pool_address,
-            dex_name: self.name().to_string(),
+            dex: self.name().to_string(),
             chain_id: self.chain_id(),
             tokens: vec![token0, token1],
             creation_block: 0,
@@ -97,7 +97,7 @@ impl DexProtocol for Sushiswap {
         Ok(LiquidityDistribution {
             token0: token0.clone(),
             token1: token1.clone(),
-            dex_name: self.name().to_string(),
+            dex: self.name().to_string(),
             chain_id: self.chain_id(),
             price_levels: vec![price_level],
             timestamp: Utc::now(),

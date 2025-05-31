@@ -17,7 +17,7 @@ pub struct Token {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Pool {
     pub address: Address,
-    pub dex_name: String,
+    pub dex: String,
     pub chain_id: u64,
     pub tokens: Vec<Token>,
     pub creation_block: u64,
@@ -53,7 +53,7 @@ pub struct PriceLiquidity {
 pub struct LiquidityDistribution {
     pub token0: Token,
     pub token1: Token,
-    pub dex_name: String,
+    pub dex: String,
     pub chain_id: u64,
     pub price_levels: Vec<PriceLiquidity>,
     pub timestamp: DateTime<Utc>,
@@ -80,7 +80,7 @@ pub enum LevelType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SwapImpact {
     pub pool_address: Address,
-    pub dex_name: String,
+    pub dex: String,
     pub token_in: Token,
     pub token_out: Token,
     pub amount_in: f64,
@@ -94,7 +94,7 @@ pub struct SwapImpact {
 pub struct LiquidityPosition {
     pub provider_address: Address,
     pub pool_address: Address,
-    pub dex_name: String,
+    pub dex: String,
     pub tokens: Vec<Token>,
     pub share_percent: f64,
     pub value_usd: Option<f64>,
