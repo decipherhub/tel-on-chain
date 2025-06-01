@@ -122,7 +122,7 @@ async fn get_liquidity_walls(
             decimals: 18,
             chain_id: params.chain_id.unwrap_or(1),
         },
-        price: 1000.0,
+        price: 500.0,
         buy_walls: vec![LiquidityWall {
             price_lower: 950.0,
             price_upper: 990.0,
