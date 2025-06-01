@@ -40,6 +40,19 @@ impl DexProtocol for Sushiswap {
         self.provider.clone()
     }
 
+    /// Asynchronously retrieves information about a Sushiswap pool at the specified address.
+    ///
+    /// Currently returns a placeholder `Pool` with dummy token data and static metadata.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use your_crate::{Sushiswap, Address};
+    /// # async fn example(sushi: Sushiswap, pool_addr: Address) {
+    /// let pool = sushi.get_pool(pool_addr).await.unwrap();
+    /// assert_eq!(pool.dex, "sushiswap");
+    /// # }
+    /// ```
     async fn get_pool(&self, pool_address: Address) -> Result<Pool, Error> {
         // For now, this is a simple placeholder that returns dummy data
         let token0 = Token {
@@ -60,7 +73,7 @@ impl DexProtocol for Sushiswap {
 
         Ok(Pool {
             address: pool_address,
-            dex_name: self.name().to_string(),
+            dex: self.name().to_string(),
             chain_id: self.chain_id(),
             tokens: vec![token0, token1],
             creation_block: 0,
@@ -74,6 +87,19 @@ impl DexProtocol for Sushiswap {
         Ok(Vec::new())
     }
 
+    /// Retrieves the liquidity distribution for a given pool address.
+    ///
+    /// Returns a `LiquidityDistribution` containing dummy price and liquidity values for the specified pool. The distribution includes placeholder data with a single price level and current timestamps.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let sushiswap = Sushiswap::new(provider, factory_address);
+    /// let distribution = tokio_test::block_on(
+    ///     sushiswap.get_liquidity_distribution(pool_address)
+    /// ).unwrap();
+    /// assert_eq!(distribution.price_levels.len(), 1);
+    /// ```
     async fn get_liquidity_distribution(
         &self,
         pool_address: Address,
@@ -97,7 +123,7 @@ impl DexProtocol for Sushiswap {
         Ok(LiquidityDistribution {
             token0: token0.clone(),
             token1: token1.clone(),
-            dex_name: self.name().to_string(),
+            dex: self.name().to_string(),
             chain_id: self.chain_id(),
             price_levels: vec![price_level],
             timestamp: Utc::now(),

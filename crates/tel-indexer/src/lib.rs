@@ -1,16 +1,16 @@
+use crate::storage::Storage;
+use alloy_primitives::Address;
+use std::collections::HashMap;
+use std::str::FromStr;
+use std::sync::Arc;
+use std::time::Duration;
 use tel_core::config::Config;
 use tel_core::dexes::{get_dex_by_name, DexProtocol};
 use tel_core::error::Error;
 use tel_core::models::{LiquidityDistribution, Pool, Token};
 use tel_core::providers::ProviderManager;
 use tel_core::storage;
-use tel_core::storage::Storage;
 use tel_core::storage::SqliteStorage;
-use alloy_primitives::Address;
-use std::collections::HashMap;
-use std::str::FromStr;
-use std::sync::Arc;
-use std::time::Duration;
 use tokio::time;
 use tracing::{debug, error, info, warn};
 
@@ -22,6 +22,10 @@ pub struct Indexer {
 }
 
 impl Indexer {
+    /// Creates a new `Indexer` instance with configured providers and DEX implementations.
+    ///
+    /// Initializes the provider manager and loads enabled DEX protocols based on the provided configuration.
+    /// Returns an error if provider initialization fails or if any DEX factory address is invalid. DEXes without implementations or providers are skipped with a warning.
     pub fn new(config: Config, storage: Arc<dyn Storage>) -> Result<Self, Error> {
         // Initialize provider manager from config
         let provider_manager = Arc::new(ProviderManager::new(
@@ -42,7 +46,9 @@ impl Indexer {
                 let factory_address = Address::from_str(&dex_config.factory_address)
                     .map_err(|_| Error::InvalidAddress(dex_config.factory_address.clone()))?;
 
-                if let Some(dex) = get_dex_by_name(&dex_config.name, provider, factory_address) {
+                if let Some(dex) =
+                    get_dex_by_name(&dex_config.name, provider, factory_address, storage.clone())
+                {
                     dexes.insert(dex_config.name.clone(), dex);
                 } else {
                     warn!("DEX implementation not found for: {}", dex_config.name);
@@ -63,6 +69,12 @@ impl Indexer {
         })
     }
 
+    /// Runs the indexer in continuous mode, periodically fetching and processing pools from all configured DEXes.
+    ///
+    /// This asynchronous method enters an infinite loop, retrieving pools from each DEX at the configured interval and processing their liquidity data. Errors encountered during pool retrieval or processing are logged, but do not interrupt the indexing cycle.
+    ///
+    /// # Returns
+    /// Returns `Ok(())` if the loop is externally stopped; otherwise, runs indefinitely.
     pub async fn start(&self) -> Result<(), Error> {
         info!("Starting indexer...");
         let interval = Duration::from_secs(self.config.indexer.interval_secs);
@@ -85,11 +97,11 @@ impl Indexer {
                         for pool in pools {
                             match self.process_pool(&pool).await {
                                 Ok(_) => {
-                                    debug!("Processed pool {} on {}", pool.address, pool.dex_name)
+                                    debug!("Processed pool {} on {}", pool.address, pool.dex)
                                 }
                                 Err(e) => warn!(
                                     "Failed to process pool {} on {}: {}",
-                                    pool.address, pool.dex_name, e
+                                    pool.address, pool.dex, e
                                 ),
                             }
                         }
@@ -102,12 +114,19 @@ impl Indexer {
         }
     }
 
+    /// Processes a liquidity pool by retrieving and storing its liquidity distribution.
+    ///
+    /// Attempts to obtain the DEX implementation for the given pool, fetches the pool's liquidity distribution asynchronously, and saves the result to storage.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the DEX is unknown, if retrieving the liquidity distribution fails, or if saving to storage fails.
     async fn process_pool(&self, pool: &Pool) -> Result<(), Error> {
         // Get DEX implementation
         let dex = self
             .dexes
-            .get(&pool.dex_name)
-            .ok_or_else(|| Error::UnknownDEX(pool.dex_name.clone()))?;
+            .get(&pool.dex)
+            .ok_or_else(|| Error::UnknownDEX(pool.dex.clone()))?;
 
         // Get and store liquidity distribution
         let distribution = dex.get_liquidity_distribution(pool.address).await?;
@@ -213,6 +232,20 @@ impl Indexer {
     }
 }
 
+/// Runs the DEX indexer in either continuous or single-pool mode.
+///
+/// If both `dex` and `pair` are provided, indexes a specific pool for the given DEX and saves its liquidity distribution. Otherwise, starts the indexer in continuous mode to periodically index all configured DEXes and pools.
+///
+/// # Returns
+/// Returns `Ok(())` on success, or an error if initialization or indexing fails.
+///
+/// # Examples
+///
+/// ```
+/// let config = Config::default();
+/// let result = run_indexer(config, Some("UniswapV2".to_string()), Some("0x1234...".to_string())).await;
+/// assert!(result.is_ok());
+/// ```
 pub async fn run_indexer(
     config: Config,
     dex: Option<String>,
@@ -241,7 +274,7 @@ pub async fn run_indexer(
             let pool = indexer
                 .index_pool(&dex_name, &pool_address, chain_id)
                 .await?;
-            info!("Indexed pool: {} on {}", pool.address, pool.dex_name);
+            info!("Indexed pool: {} on {}", pool.address, pool.dex);
 
             match indexer
                 .get_liquidity_distribution(&dex_name, &pool_address)
@@ -252,8 +285,11 @@ pub async fn run_indexer(
                         "Got liquidity distribution for pool {} on {}",
                         pool_address, dex_name
                     );
-                    storage::save_liquidity_distribution_async(indexer.storage.clone(), distribution)
-                        .await?;
+                    storage::save_liquidity_distribution_async(
+                        indexer.storage.clone(),
+                        distribution,
+                    )
+                    .await?;
                 }
                 Err(e) => {
                     error!(
@@ -270,4 +306,4 @@ pub async fn run_indexer(
     }
 
     Ok(())
-} 
+}
