@@ -96,12 +96,32 @@ impl Storage for SqliteStorage {
         Ok(())
     }
 
+    /// Retrieves a token by its address and chain ID.
+    ///
+    /// Returns `Ok(Some(Token))` if the token exists, or `Ok(None)` if not found. Currently unimplemented and always returns `Ok(None)`.
     fn get_token(&self, address: Address, _chain_id: u64) -> Result<Option<Token>> {
         let _address_str = address.to_string();
         // TODO: Implement
         Ok(None)
     }
 
+    /// Saves a pool and its associated tokens to the SQLite database within a transaction.
+    ///
+    /// Inserts or updates both tokens and the pool record atomically. If any operation fails, the transaction is rolled back.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::DatabaseError` if any database operation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let storage = SqliteStorage::new(":memory:").unwrap();
+    /// let token0 = Token::new(...); // fill with valid data
+    /// let token1 = Token::new(...);
+    /// let pool = Pool::new(..., vec![token0, token1], ...);
+    /// storage.save_pool(&pool).unwrap();
+    /// ```
     fn save_pool(&self, pool: &Pool) -> std::result::Result<(), Error> {
         use rusqlite::{params, TransactionBehavior};
 
@@ -151,23 +171,48 @@ impl Storage for SqliteStorage {
         Ok(())
     }
 
+    /// Retrieves a pool by its address.
+    ///
+    /// Returns `Ok(Some(Pool))` if a pool with the specified address exists, or `Ok(None)` if not found. Currently unimplemented and always returns `Ok(None)`.
     fn get_pool(&self, address: Address) -> Result<Option<Pool>> {
         let _address_str = address.to_string();
         // TODO: Implement
         Ok(None)
     }
 
+    /// Retrieves all pools for the specified DEX and chain ID.
+    ///
+    /// Currently unimplemented; always returns an empty vector.
     fn get_pools_by_dex(&self, _dex: &str, _chain_id: u64) -> Result<Vec<Pool>> {
         // TODO: Implement
         Ok(vec![])
     }
 
+    /// Retrieves all pools that include the specified token address.
+    ///
+    /// Currently unimplemented; always returns an empty vector.
+    ///
+    /// # Parameters
+    /// - `token_address`: The address of the token to search for in pools.
+    ///
+    /// # Returns
+    /// A vector of pools containing the specified token address, or an empty vector if none are found.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let pools = storage.get_pools_by_token(token_address).unwrap();
+    /// assert!(pools.is_empty());
+    /// ```
     fn get_pools_by_token(&self, token_address: Address) -> Result<Vec<Pool>> {
         let _address_str = token_address.to_string();
         // TODO: Implement
         Ok(vec![])
     }
 
+    /// Saves a liquidity distribution record to the storage.
+    ///
+    /// Currently unimplemented; calling this method has no effect and always returns success.
     fn save_liquidity_distribution(&self, distribution: &LiquidityDistribution) -> Result<()> {
         let _token0_address_str = distribution.token0.address.to_string();
         let _token1_address_str = distribution.token1.address.to_string();
@@ -175,6 +220,9 @@ impl Storage for SqliteStorage {
         Ok(())
     }
 
+    /// Retrieves the liquidity distribution for a given token pair, DEX, and chain ID.
+    ///
+    /// Returns `Ok(Some(LiquidityDistribution))` if a matching record exists, or `Ok(None)` if not found. Currently unimplemented and always returns `Ok(None)`.
     fn get_liquidity_distribution(
         &self,
         token0: Address,
@@ -201,10 +249,27 @@ pub async fn get_token_async(
     storage.get_token(address, chain_id)
 }
 
+/// Saves a pool to the storage asynchronously.
+///
+/// # Examples
+///
+/// ```
+/// let storage = Arc::new(SqliteStorage::new(":memory:").unwrap());
+/// let pool = Pool::default();
+/// save_pool_async(storage, pool).await.unwrap();
+/// ```
 pub async fn save_pool_async(storage: Arc<dyn Storage>, pool: Pool) -> Result<()> {
     storage.save_pool(&pool)
 }
 
+/// Retrieves a pool by its address asynchronously.
+///
+/// # Examples
+///
+/// ```
+/// let pool = get_pool_async(storage.clone(), pool_address).await?;
+/// assert!(pool.is_some());
+/// ```
 pub async fn get_pool_async(storage: Arc<dyn Storage>, address: Address) -> Result<Option<Pool>> {
     storage.get_pool(address)
 }

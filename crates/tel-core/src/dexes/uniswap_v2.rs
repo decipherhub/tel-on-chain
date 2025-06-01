@@ -40,6 +40,7 @@ pub struct UniswapV2 {
 }
 
 impl UniswapV2 {
+    /// Creates a new UniswapV2 instance with the specified Ethereum provider, factory contract address, and storage backend.
     pub fn new(
         provider: Arc<EthereumProvider>,
         factory_address: Address,
@@ -79,7 +80,18 @@ impl UniswapV2 {
     //     Ok(token)
     // }
 
-    // Helper method to get reserves from a pool - simplified version
+    /// Retrieves the reserves and last update timestamp for a given pool address.
+    ///
+    /// This simplified placeholder returns zero values for reserves and timestamp.
+    /// In production, this would query the pool contract for actual reserve data.
+    ///
+    /// # Arguments
+    ///
+    /// * `_pool_address` - The address of the liquidity pool to query.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing the reserves of token0, token1, and the last update timestamp.
     async fn get_reserves(&self, _pool_address: Address) -> Result<(u128, u128, u32), Error> {
         // This is a placeholder, in production we'd actually call the contract
         // Simplified for compatibility
@@ -105,6 +117,24 @@ impl DexProtocol for UniswapV2 {
         self.provider.clone()
     }
 
+    /// Retrieves information about a specific Uniswap V2 pool by its address.
+    ///
+    /// Returns a `Pool` object with placeholder token data. In production, this would fetch real pool and token metadata from the blockchain.
+    ///
+    /// # Arguments
+    ///
+    /// * `pool_address` - The address of the Uniswap V2 pool to retrieve.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the `Pool` object with dummy tokens, or an error if retrieval fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let pool = uniswap_v2.get_pool(Address::from_low_u64_be(0x1234)).await?;
+    /// assert_eq!(pool.address, Address::from_low_u64_be(0x1234));
+    /// ```
     async fn get_pool(&self, pool_address: Address) -> Result<Pool, Error> {
         // This is a placeholder implementation
         // In production, we'd use provider.call() with correct parameters
@@ -138,6 +168,22 @@ impl DexProtocol for UniswapV2 {
         })
     }
 
+    /// Retrieves up to 10 Uniswap V2 pools from the factory contract and saves them to storage.
+    ///
+    /// Queries the Uniswap V2 factory contract for the total number of pairs, fetches up to 10 pool addresses and their associated token addresses, constructs pool objects with token stubs, saves each pool asynchronously to storage, and returns the list of pools.
+    ///
+    /// # Returns
+    /// A vector of `Pool` objects representing the discovered Uniswap V2 pools.
+    ///
+    /// # Errors
+    /// Returns an error if any on-chain contract call fails or if saving a pool to storage fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let pools = uniswap_v2.get_all_pools().await?;
+    /// assert!(!pools.is_empty());
+    /// ```
     async fn get_all_pools(&self) -> Result<Vec<Pool>, Error> {
         // 1. Alloy Provider (RootProvider<Ethereum>)
         let inner = self.provider.provider();
@@ -208,6 +254,26 @@ impl DexProtocol for UniswapV2 {
         Ok(pools)
     }
 
+    /// Retrieves the current liquidity distribution and price for a given Uniswap V2 pool.
+    ///
+    /// Calculates the price and available liquidity for both tokens in the specified pool,
+    /// returning a `LiquidityDistribution` with a single price point representing the current state.
+    ///
+    /// # Parameters
+    /// - `pool_address`: The address of the Uniswap V2 pool to query.
+    ///
+    /// # Returns
+    /// A `LiquidityDistribution` containing token information, DEX name, chain ID, price levels, and timestamp.
+    ///
+    /// # Errors
+    /// Returns an error if the pool or reserves cannot be retrieved.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let distribution = uniswap_v2.get_liquidity_distribution(pool_address).await?;
+    /// println!("Current price: {}", distribution.price_levels[0].price);
+    /// ```
     async fn get_liquidity_distribution(
         &self,
         pool_address: Address,

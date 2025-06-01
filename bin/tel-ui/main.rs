@@ -112,6 +112,17 @@ impl Default for Tab {
 }
 
 impl TelOnChainUI {
+    /// Creates a new `TelOnChainUI` instance with default state, dummy token lists, and initiates an API connection check.
+    ///
+    /// Initializes UI state for the application, including default DEX and chain selections, available tokens, and database paths. Also triggers an asynchronous check of the API connection status on startup.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let ctx = eframe::CreationContext::default();
+    /// let app = TelOnChainUI::new(&ctx);
+    /// assert_eq!(app.api_status, "Connecting...");
+    /// ```
     fn new(_cc: &CreationContext) -> Self {
         let mut app = TelOnChainUI {
             api_status: "Connecting...".to_string(),
@@ -260,6 +271,9 @@ impl TelOnChainUI {
         }
     }
 
+    /// Queries up to 100 pool records from the database and populates the internal pool list.
+    ///
+    /// Updates the database query status if an error occurs during query preparation or execution.
     fn query_pools(&mut self, conn: &Connection) {
         self.db_pools.clear();
 
@@ -550,6 +564,9 @@ impl TelOnChainUI {
         }
     }
 
+    /// Renders the Database Explorer tab, allowing users to query and view pool data from the local SQLite database.
+    ///
+    /// Displays controls for entering the database path and querying the database. Shows the query status and a tabbed interface for different database tables. If pool data is available, presents it in a grid with truncated addresses; otherwise, prompts the user to query the database first.
     fn ui_db_explorer(&mut self, ui: &mut Ui) {
         ui.heading("Database Explorer");
 
@@ -632,6 +649,9 @@ impl TelOnChainUI {
         // Distribution data would be shown similarly in the selected tab
     }
 
+    /// Displays a list of liquidity walls with price ranges, liquidity values, and DEX breakdowns in the UI.
+    ///
+    /// Each wall is shown with its price range, total liquidity, and a breakdown of liquidity by DEX source. Buy walls are color-coded green, sell walls red. If no walls are present, a message is displayed.
     fn show_walls(&self, ui: &mut Ui, walls: &[LiquidityWall], is_buy: bool) {
         let color = if is_buy {
             Color32::DARK_GREEN
@@ -676,6 +696,9 @@ impl TelOnChainUI {
         }
     }
 
+    /// Loads up to 200 pools from the database filtered by the selected DEX and chain ID.
+    ///
+    /// Clears the current pool list, checks for database existence, and queries the `pools` table for entries matching the selected DEX and chain ID. Updates the pool list, loading status, and query status message accordingly. If the database is missing or an error occurs, sets an appropriate status message.
     fn load_pool_info(&mut self) {
         use rusqlite::{params, Connection};
 
@@ -728,6 +751,16 @@ impl TelOnChainUI {
         }
     }
 
+    /// Renders the "Pool Info" tab, allowing users to filter, load, and browse pools from the database by DEX and chain.
+    ///
+    /// Displays filter controls for DEX and chain selection, a button to reload pools, and a status message. Shows a scrollable list of pools matching the current filter, and displays detailed information for the selected pool.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Within the egui update loop:
+    /// tel_on_chain_ui.ui_pool_info(ui);
+    /// ```
     fn ui_pool_info(&mut self, ui: &mut Ui) {
         ui.heading("Pool Information");
 
@@ -803,6 +836,14 @@ impl TelOnChainUI {
         });
     }
 
+    /// Renders the Settings tab UI, allowing users to view the API URL, check API connection status, and see the current API status.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Within the egui update loop:
+    /// app.ui_settings(ui);
+    /// ```
     fn ui_settings(&mut self, ui: &mut Ui) {
         ui.heading("Settings");
 
