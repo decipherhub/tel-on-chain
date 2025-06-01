@@ -2,10 +2,13 @@ use crate::error::Error;
 use crate::models::{LiquidityDistribution, Pool, Token};
 use crate::Result;
 use alloy_primitives::Address;
+use alloy_sol_types::abi::token;
+use chrono::{DateTime, NaiveDateTime, Utc};
 use rusqlite::{params, Connection};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tokio::task;
+use std::str::FromStr;
 
 #[async_trait::async_trait]
 pub trait Storage: Send + Sync {
@@ -177,7 +180,74 @@ impl Storage for SqliteStorage {
     fn get_pool(&self, address: Address) -> Result<Option<Pool>> {
         let _address_str = address.to_string();
         // TODO: Implement
-        Ok(None)
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT address, chain_id, dex, token0_address, token1_address, fee
+             FROM pools WHERE address = ?1",
+        )
+        .map_err(|e| Error::DatabaseError(format!("prepare: {e}")))?;
+        let (address, chain_id, dex, token0_addr, token1_addr, fee) = match stmt
+            .query_row(params![_address_str], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,  // address
+                    row.get::<_, u64>(1)?,     // chain_id
+                    row.get::<_, String>(2)?,  // dex
+                    row.get::<_, String>(3)?,  // token0_address
+                    row.get::<_, String>(4)?,  // token1_address
+                    row.get::<_, u32>(5)?,     // fee
+                ))
+            }) {
+            Ok(r) => r,
+            Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(None),
+            Err(e) => return Err(Error::DatabaseError(format!("query_row get_pool: {e}"))),
+        };
+
+        // 3. token0, token1 정보 읽기
+        let mut token_stmt = conn.prepare(
+            "SELECT address, chain_id, name, symbol, decimals
+             FROM tokens
+             WHERE address = ?1 AND chain_id = ?2",
+        ).map_err(|e| Error::DatabaseError(format!("prepare get_token: {e}")))?;
+        
+         let token0: Token = token_stmt
+            .query_row(params![token0_addr, chain_id], |row| {
+                Ok(Token {
+                    address: Address::from_str(&row.get::<_, String>(0)?)
+                        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?,
+                    chain_id: row.get(1)?,
+                    name: row.get(2)?,
+                    symbol: row.get(3)?,
+                    decimals: row.get(4)?,
+                })
+            })
+            .map_err(|e| Error::DatabaseError(format!("query_row token0: {e}")))?;
+
+        let token1: Token = token_stmt
+            .query_row(params![token1_addr, chain_id], |row| {
+                Ok(Token {
+                    address: Address::from_str(&row.get::<_, String>(0)?)
+                        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?,
+                    chain_id: row.get(1)?,
+                    name: row.get(2)?,
+                    symbol: row.get(3)?,
+                    decimals: row.get(4)?,
+                })
+            })
+            .map_err(|e| Error::DatabaseError(format!("query_row token1: {e}")))?;
+
+        // chrono::DateTime<Utc> 기본값 (1970-01-01T00:00:00Z)
+        let default_dt = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc);
+
+        Ok(Some(Pool {
+            address: Address::from_str(&address).unwrap(),
+            dex,
+            chain_id,
+            tokens: vec![token0, token1],
+            creation_block: 0, // or fetch from DB if available
+            creation_timestamp: default_dt,
+            last_updated_block: 0,
+            last_updated_timestamp: default_dt,
+        }))
     }
 
     /// Retrieves all pools for the specified DEX and chain ID.

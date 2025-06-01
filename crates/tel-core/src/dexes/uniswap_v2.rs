@@ -2,11 +2,12 @@ use crate::dexes::DexProtocol;
 use crate::error::Error;
 use crate::models::{LiquidityDistribution, Pool, PriceLiquidity, Token};
 use crate::providers::EthereumProvider;
-use crate::storage::{save_pool_async, Storage};
+use crate::storage::{save_pool_async, get_pool_async, Storage};
 use alloy_primitives::{Address, U256};
 use alloy_sol_types::sol;
 use async_trait::async_trait;
 use chrono::Utc;
+use IUniswapV2Pair::getReservesReturn;
 use std::sync::Arc;
 use tokio::try_join;
 
@@ -21,6 +22,7 @@ sol! {
     // ── Uniswap V2 Pair ──────────────────────────────────────────────
     #[sol(rpc)]
     interface IUniswapV2Pair {
+        function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
         function token0() external view returns (address);
         function token1() external view returns (address);
     }
@@ -95,7 +97,18 @@ impl UniswapV2 {
     async fn get_reserves(&self, _pool_address: Address) -> Result<(u128, u128, u32), Error> {
         // This is a placeholder, in production we'd actually call the contract
         // Simplified for compatibility
-        Ok((0, 0, 0))
+        // NO reserves store in DB?
+        let inner = self.provider.provider();
+        let pair = IUniswapV2Pair::new(_pool_address, inner.clone());
+        let get_reserves_return = pair
+            .getReserves()
+            .call()
+            .await
+            .map_err(|e| Error::ProviderError(format!("getReserves: {e}")))?;
+        let (reserve0, reserve1, last_updated_timestamp) = (get_reserves_return.reserve0, get_reserves_return.reserve1, get_reserves_return.blockTimestampLast);
+        let reserve0 = reserve0.to::<u128>();
+        let reserve1 = reserve1.to::<u128>();
+        Ok((reserve0, reserve1, last_updated_timestamp))
     }
 }
 
@@ -135,37 +148,45 @@ impl DexProtocol for UniswapV2 {
     /// let pool = uniswap_v2.get_pool(Address::from_low_u64_be(0x1234)).await?;
     /// assert_eq!(pool.address, Address::from_low_u64_be(0x1234));
     /// ```
-    async fn get_pool(&self, pool_address: Address) -> Result<Pool, Error> {
+    async fn get_pool(&self, _pool_address: Address) -> Result<Pool, Error> {
         // This is a placeholder implementation
         // In production, we'd use provider.call() with correct parameters
-
+        let pool_result = get_pool_async(self.storage.clone(), _pool_address).await;
+        match pool_result {
+            Ok(Some(pool)) => Ok(pool),
+            Ok(None) => Err(Error::DexError(format!(
+                "Pool not found: {}",
+                _pool_address
+            ))),
+            Err(e) => Err(e),
+        }
         // For simplicity, creating a dummy pool
-        let token0 = Token {
-            address: Address::ZERO,
-            symbol: "DUMMY0".to_string(),
-            name: "Dummy Token 0".to_string(),
-            decimals: 18,
-            chain_id: self.chain_id(),
-        };
+        // let token0 = Token {
+        //     address: Address::ZERO,
+        //     symbol: "DUMMY0".to_string(),
+        //     name: "Dummy Token 0".to_string(),
+        //     decimals: 18,
+        //     chain_id: self.chain_id(),
+        // };
 
-        let token1 = Token {
-            address: Address::ZERO,
-            symbol: "DUMMY1".to_string(),
-            name: "Dummy Token 1".to_string(),
-            decimals: 18,
-            chain_id: self.chain_id(),
-        };
+        // let token1 = Token {
+        //     address: Address::ZERO,
+        //     symbol: "DUMMY1".to_string(),
+        //     name: "Dummy Token 1".to_string(),
+        //     decimals: 18,
+        //     chain_id: self.chain_id(),
+        // };
 
-        Ok(Pool {
-            address: pool_address,
-            dex: self.name().to_string(),
-            chain_id: self.chain_id(),
-            tokens: vec![token0, token1],
-            creation_block: 0,
-            creation_timestamp: Utc::now(),
-            last_updated_block: 0,
-            last_updated_timestamp: Utc::now(),
-        })
+        // Ok(Pool {
+        //     address: pool_address,
+        //     dex: self.name().to_string(),
+        //     chain_id: self.chain_id(),
+        //     tokens: vec![token0, token1],
+        //     creation_block: 0,
+        //     creation_timestamp: Utc::now(),
+        //     last_updated_block: 0,
+        //     last_updated_timestamp: Utc::now(),
+        // })
     }
 
     /// Retrieves up to 10 Uniswap V2 pools from the factory contract and saves them to storage.
