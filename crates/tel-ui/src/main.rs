@@ -254,6 +254,9 @@ impl TelOnChainUI {
         }
     }
 
+    /// Queries up to 100 pool records from the database and updates the application's pool list.
+    ///
+    /// On success, populates the `db_pools` field with retrieved pool data. On failure, updates `db_query_status` with an error message.
     fn query_pools(&mut self, conn: &Connection) {
         self.db_pools.clear();
 
@@ -543,6 +546,16 @@ impl TelOnChainUI {
         }
     }
 
+    /// Renders the Database Explorer tab, allowing users to query and view pool data from a local SQLite database.
+    ///
+    /// Displays controls for entering the database path and querying the database. Shows the query status and presents pool records in a striped grid with truncated addresses and related information. If no pool data is available, prompts the user to query the database.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Within the TelOnChainUI update loop:
+    /// self.ui_db_explorer(ui);
+    /// ```
     fn ui_db_explorer(&mut self, ui: &mut Ui) {
         ui.heading("Database Explorer");
 
@@ -625,6 +638,20 @@ impl TelOnChainUI {
         // Distribution data would be shown similarly in the selected tab
     }
 
+    /// Displays a list of liquidity walls with price ranges, liquidity values, and DEX source breakdowns.
+    ///
+    /// Each wall is shown with its price range, total liquidity, and a color indicating buy (green) or sell (red) walls. If available, a table lists the liquidity contributed by each DEX source. If no walls are present, a message is shown.
+    ///
+    /// # Parameters
+    /// - `walls`: Slice of liquidity wall data to display.
+    /// - `is_buy`: If true, walls are styled as buy walls; otherwise, as sell walls.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Assume `ui` is a mutable reference to an egui::Ui and `walls` is a Vec<LiquidityWall>.
+    /// app.show_walls(ui, &walls, true); // Displays buy walls
+    /// ```
     fn show_walls(&self, ui: &mut Ui, walls: &[LiquidityWall], is_buy: bool) {
         let color = if is_buy {
             Color32::DARK_GREEN
@@ -669,7 +696,17 @@ impl TelOnChainUI {
         }
     }
 
- pub fn ui_pool_info(&mut self, ui: &mut Ui) {
+ /// Displays the Pool Info tab UI, allowing users to filter and browse liquidity pools by DEX and chain.
+    ///
+    /// Provides filter controls for DEX and chain selection, a button to reload pool data, and a scrollable list of pools. Selecting a pool displays its detailed information.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Within the eframe::App update method:
+    /// self.ui_pool_info(ui);
+    /// ```
+    pub fn ui_pool_info(&mut self, ui: &mut Ui) {
         // ── 상단 필터 바 ───────────────────────────────────────────────
         ui.horizontal(|ui| {
             ui.label("DEX:");
@@ -742,6 +779,14 @@ impl TelOnChainUI {
         });
     }
 
+    /// Renders the settings panel, allowing users to view the API URL, check API connectivity, and see the current API connection status.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Within the egui update loop:
+    /// app.ui_settings(ui);
+    /// ```
     fn ui_settings(&mut self, ui: &mut Ui) {
         ui.heading("Settings");
 

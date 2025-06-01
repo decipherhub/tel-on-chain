@@ -55,6 +55,23 @@ pub trait DexProtocol: Send + Sync {
     ) -> Result<f64, Error>;
 }
 
+/// Returns an instance of a DEX protocol implementation matching the given name.
+///
+/// If the provided name matches a supported DEX ("uniswap_v2", "uniswap_v3", or "sushiswap"),
+/// this function returns a boxed instance of the corresponding protocol initialized with the given
+/// Ethereum provider, factory address, and (where applicable) storage interface. Returns `None` if the name does not match any supported DEX.
+///
+/// # Examples
+///
+/// ```
+/// let dex = get_dex_by_name(
+///     "uniswap_v2",
+///     provider.clone(),
+///     factory_address,
+///     storage.clone(),
+/// );
+/// assert!(dex.is_some());
+/// ```
 pub fn get_dex_by_name(
     name: &str,
     provider: Arc<EthereumProvider>,

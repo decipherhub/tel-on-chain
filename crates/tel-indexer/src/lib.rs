@@ -22,6 +22,10 @@ pub struct Indexer {
 }
 
 impl Indexer {
+    /// Creates a new `Indexer` instance with configured providers and DEX implementations.
+    ///
+    /// Initializes the provider manager and loads enabled DEX protocols based on the provided configuration.
+    /// Returns an error if provider initialization fails or if any DEX factory address is invalid. DEXes without implementations or providers are skipped with a warning.
     pub fn new(config: Config, storage: Arc<dyn Storage>) -> Result<Self, Error> {
         // Initialize provider manager from config
         let provider_manager = Arc::new(ProviderManager::new(
@@ -65,6 +69,12 @@ impl Indexer {
         })
     }
 
+    /// Runs the indexer in continuous mode, periodically fetching and processing pools from all configured DEXes.
+    ///
+    /// This asynchronous method enters an infinite loop, retrieving pools from each DEX at the configured interval and processing their liquidity data. Errors encountered during pool retrieval or processing are logged, but do not interrupt the indexing cycle.
+    ///
+    /// # Returns
+    /// Returns `Ok(())` if the loop is externally stopped; otherwise, runs indefinitely.
     pub async fn start(&self) -> Result<(), Error> {
         info!("Starting indexer...");
         let interval = Duration::from_secs(self.config.indexer.interval_secs);
@@ -104,6 +114,13 @@ impl Indexer {
         }
     }
 
+    /// Processes a liquidity pool by retrieving and storing its liquidity distribution.
+    ///
+    /// Attempts to obtain the DEX implementation for the given pool, fetches the pool's liquidity distribution asynchronously, and saves the result to storage.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the DEX is unknown, if retrieving the liquidity distribution fails, or if saving to storage fails.
     async fn process_pool(&self, pool: &Pool) -> Result<(), Error> {
         // Get DEX implementation
         let dex = self
@@ -215,6 +232,20 @@ impl Indexer {
     }
 }
 
+/// Runs the DEX indexer in either continuous or single-pool mode.
+///
+/// If both `dex` and `pair` are provided, indexes a specific pool for the given DEX and saves its liquidity distribution. Otherwise, starts the indexer in continuous mode to periodically index all configured DEXes and pools.
+///
+/// # Returns
+/// Returns `Ok(())` on success, or an error if initialization or indexing fails.
+///
+/// # Examples
+///
+/// ```
+/// let config = Config::default();
+/// let result = run_indexer(config, Some("UniswapV2".to_string()), Some("0x1234...".to_string())).await;
+/// assert!(result.is_ok());
+/// ```
 pub async fn run_indexer(
     config: Config,
     dex: Option<String>,

@@ -63,6 +63,14 @@ impl Indexer {
         })
     }
 
+    /// Runs the main indexing loop, periodically fetching and processing pools for all configured DEXes.
+    ///
+    /// The method continuously iterates over each enabled DEX, retrieves all pools, and processes each pool to update liquidity data. Errors encountered during pool retrieval or processing are logged, but do not interrupt the indexing cycle. The interval between cycles is determined by the configuration.
+    ///
+    /// This function runs indefinitely unless externally stopped.
+    ///
+    /// # Returns
+    /// Returns `Ok(())` if the loop is started successfully. Errors are only returned if initial setup fails; runtime errors are logged and do not break the loop.
     pub async fn start(&self) -> Result<(), Error> {
         info!("Starting indexer...");
         let interval = Duration::from_secs(self.config.indexer.interval_secs);
@@ -102,6 +110,9 @@ impl Indexer {
         }
     }
 
+    /// Processes a liquidity pool by retrieving its liquidity distribution and saving it to storage.
+    ///
+    /// Returns an error if the DEX implementation is unknown or if fetching or saving the liquidity distribution fails.
     async fn process_pool(&self, pool: &Pool) -> Result<(), Error> {
         // Get DEX implementation
         let dex = self
@@ -116,6 +127,27 @@ impl Indexer {
         Ok(())
     }
 
+    /// Indexes a specific liquidity pool for a given DEX and chain.
+    ///
+    /// Parses the pool address, retrieves pool details from the DEX implementation, and saves the pool data to storage.
+    ///
+    /// # Parameters
+    /// - `dex`: The name of the DEX protocol.
+    /// - `pool_address_str`: The string representation of the pool's address.
+    /// - `chain_id`: The chain ID where the pool resides.
+    ///
+    /// # Returns
+    /// The indexed `Pool` object on success.
+    ///
+    /// # Errors
+    /// Returns an error if the address is invalid, the DEX is unknown, or if fetching or saving the pool fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let pool = indexer.index_pool("uniswap", "0x1234abcd...", 1).await?;
+    /// assert_eq!(pool.dex, "uniswap");
+    /// ```
     pub async fn index_pool(
         &self,
         dex: &str,
@@ -186,6 +218,22 @@ impl Indexer {
         Ok(token)
     }
 
+    /// Retrieves the liquidity distribution for a specific pool on a given DEX.
+    ///
+    /// Parses the pool address, locates the DEX implementation, and fetches the liquidity distribution asynchronously. Returns an error if the DEX is unknown or the address is invalid.
+    ///
+    /// # Parameters
+    /// - `dex`: The name of the DEX protocol.
+    /// - `pool_address_str`: The string representation of the pool's address.
+    ///
+    /// # Returns
+    /// The liquidity distribution for the specified pool.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let distribution = indexer.get_liquidity_distribution("uniswap", "0x1234...abcd").await?;
+    /// ```
     pub async fn get_liquidity_distribution(
         &self,
         dex: &str,
@@ -213,6 +261,30 @@ impl Indexer {
     }
 }
 
+/// Runs the indexer in either single pool mode or continuous indexing mode.
+///
+/// If both a DEX name and pool address are provided, indexes the specified pool and retrieves its liquidity distribution. Otherwise, starts the continuous indexing process for all configured DEXes and pools.
+///
+/// # Arguments
+///
+/// * `config` - The configuration for the indexer.
+/// * `dex` - Optional DEX name to index a specific pool.
+/// * `pair` - Optional pool address to index.
+///
+/// # Returns
+///
+/// Returns `Ok(())` if the indexing operation completes successfully, or an error if initialization or indexing fails.
+///
+/// # Examples
+///
+/// ```
+/// let config = load_config();
+/// // Run continuous indexing
+/// run_indexer(config, None, None).await.unwrap();
+///
+/// // Index a specific pool
+/// run_indexer(config, Some("uniswap".to_string()), Some("0x123...".to_string())).await.unwrap();
+/// ```
 pub async fn run_indexer(
     config: Config,
     dex: Option<String>,

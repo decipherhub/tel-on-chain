@@ -266,6 +266,9 @@ impl TelOnChainUI {
         }
     }
 
+    /// Queries up to 100 liquidity pools from the database and updates the internal pool list.
+    ///
+    /// If the query fails, updates the database query status with an error message.
     fn query_pools(&mut self, conn: &Connection) {
         self.db_pools.clear();
 
@@ -332,6 +335,10 @@ impl TelOnChainUI {
         }
     }
 
+    /// Queries up to 100 liquidity distribution records from the database and updates the application's state.
+    ///
+    /// For each distribution, parses the JSON field to count the number of price points and stores the result in `db_distributions`.
+    /// Updates `db_query_status` with an error message if the query fails.
     fn query_distributions(&mut self, conn: &Connection) {
         self.db_distributions.clear();
 
@@ -377,7 +384,10 @@ impl TelOnChainUI {
         }
     }
 
-    fn load_pool_info(&mut self) {
+    /// Loads pool records from the database filtered by the selected DEX and chain ID.
+///
+/// If the pools have already been loaded, the function returns immediately. Otherwise, it queries up to 200 pools matching the current DEX and chain selection, updates the internal pool list, and sets the query status message. If the database file does not exist or a query error occurs, the status message is updated accordingly.
+fn load_pool_info(&mut self) {
     // 이미 로드했다면 스킵 (새로고침 버튼으로 강제 갱신 가능)
     if self.pool_info_loaded { return; }
 
@@ -595,6 +605,9 @@ impl TelOnChainUI {
         }
     }
 
+    /// Renders the Database Explorer tab, allowing users to input a database path, query the SQLite database, and view pool data.
+    ///
+    /// Displays the current query status, provides controls for querying, and shows a tabbed interface for pools, tokens, and distributions. Pool data is presented in a grid with truncated addresses for readability. If no data is available, prompts the user to query the database first.
     fn ui_db_explorer(&mut self, ui: &mut Ui) {
         ui.heading("Database Explorer");
 
@@ -677,6 +690,21 @@ impl TelOnChainUI {
         // Distribution data would be shown similarly in the selected tab
     }
 
+    /// Displays a list of liquidity walls with price ranges, liquidity values, and DEX breakdowns.
+    ///
+    /// Each wall is shown with its price range and total liquidity, color-coded by buy or sell side. If DEX source data is available, a breakdown of liquidity per DEX is displayed. If no walls are present, a message is shown.
+    ///
+    /// # Parameters
+    /// - `walls`: Slice of liquidity walls to display.
+    /// - `is_buy`: If true, walls are shown as buy walls (green); otherwise, as sell walls (red).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Assume `ui` is a mutable reference to an egui::Ui and `walls` is a Vec<LiquidityWall>.
+    /// app.show_walls(ui, &walls, true); // Displays buy walls
+    /// app.show_walls(ui, &walls, false); // Displays sell walls
+    /// ```
     fn show_walls(&self, ui: &mut Ui, walls: &[LiquidityWall], is_buy: bool) {
         let color = if is_buy {
             Color32::DARK_GREEN
@@ -721,6 +749,11 @@ impl TelOnChainUI {
         }
     }
 
+    /// Renders the Pool Info tab, allowing users to filter, load, and browse pools by DEX and chain.
+    ///
+    /// Displays filter controls for DEX and chain selection, a button to load pools, and the current database query status.
+    /// Shows a scrollable list of pools matching the selected filters. Selecting a pool displays its detailed information.
+    /// If no pools are found, a message is shown instead.
     fn ui_pool_info(&mut self, ui: &mut Ui) {
         // 상단 필터
         ui.horizontal(|ui| {
@@ -789,6 +822,14 @@ impl TelOnChainUI {
         });
     }
 
+    /// Renders the Settings tab UI, allowing users to view the API URL, check API connectivity, and see the current API connection status.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Within the egui update loop:
+    /// tel_on_chain_ui.ui_settings(ui);
+    /// ```
     fn ui_settings(&mut self, ui: &mut Ui) {
         ui.heading("Settings");
 
