@@ -105,7 +105,26 @@ impl Storage for SqliteStorage {
     fn get_token(&self, address: Address, _chain_id: u64) -> Result<Option<Token>> {
         let _address_str = address.to_string();
         // TODO: Implement
-        Ok(None)
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT address, chain_id, name, symbol, decimals
+             FROM tokens WHERE address = ?1 AND chain_id = ?2",
+        )
+        .map_err(|e| Error::DatabaseError(format!("prepare get_token: {e}")))?;
+        let token_opt = stmt
+        .query_row(params![_address_str, _chain_id], |row| {
+            let addr: String = row.get(0)?;
+            Ok(Some(Token {
+                address: Address::from_str(&addr)
+                    .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?,
+                chain_id: row.get(1)?,
+                name: row.get(2)?,
+                symbol: row.get(3)?,
+                decimals: row.get(4)?,
+            }))
+        })
+        .map_err(|e| Error::DatabaseError(format!("query_row get_token: {e}")))?;
+        Ok(token_opt)
     }
 
     /// Saves a pool and its associated tokens to the SQLite database within a transaction.
