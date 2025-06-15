@@ -9,6 +9,8 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tokio::task;
 use std::str::FromStr;
+use serde_json;
+
 
 #[async_trait::async_trait]
 pub trait Storage: Send + Sync {
@@ -20,7 +22,7 @@ pub trait Storage: Send + Sync {
     fn save_pool(&self, pool: &Pool) -> Result<()>;
     fn get_pool(&self, address: Address) -> Result<Option<Pool>>;
     fn get_pools_by_dex(&self, dex: &str, chain_id: u64) -> Result<Vec<Pool>>;
-    fn get_pools_by_token(&self, token_address: Address) -> Result<Vec<Pool>>;
+    fn get_pools_by_token(&self, token0: Address, token1: Address, chain_id: u64) -> Result<Option<Pool>>;
 
     // Liquidity distribution operations
     fn save_liquidity_distribution(&self, distribution: &LiquidityDistribution) -> Result<()>;
@@ -105,7 +107,26 @@ impl Storage for SqliteStorage {
     fn get_token(&self, address: Address, _chain_id: u64) -> Result<Option<Token>> {
         let _address_str = address.to_string();
         // TODO: Implement
-        Ok(None)
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT address, chain_id, name, symbol, decimals
+             FROM tokens WHERE address = ?1 AND chain_id = ?2",
+        )
+        .map_err(|e| Error::DatabaseError(format!("prepare get_token: {e}")))?;
+        let token_opt = stmt
+        .query_row(params![_address_str, _chain_id], |row| {
+            let addr: String = row.get(0)?;
+            Ok(Some(Token {
+                address: Address::from_str(&addr)
+                    .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?,
+                chain_id: row.get(1)?,
+                name: row.get(2)?,
+                symbol: row.get(3)?,
+                decimals: row.get(4)?,
+            }))
+        })
+        .map_err(|e| Error::DatabaseError(format!("query_row get_token: {e}")))?;
+        Ok(token_opt)
     }
 
     /// Saves a pool and its associated tokens to the SQLite database within a transaction.
@@ -274,20 +295,126 @@ impl Storage for SqliteStorage {
     /// let pools = storage.get_pools_by_token(token_address).unwrap();
     /// assert!(pools.is_empty());
     /// ```
-    fn get_pools_by_token(&self, token_address: Address) -> Result<Vec<Pool>> {
-        let _address_str = token_address.to_string();
-        // TODO: Implement
-        Ok(vec![])
+    fn get_pools_by_token(&self, token0: Address, token1: Address, chain_id: u64) -> Result<Option<Pool>> {
+        let conn = self.conn.lock().unwrap();
+        
+        // First try with token0 as token0_address and token1 as token1_address
+        let mut stmt = conn.prepare(
+            "SELECT p.address, p.chain_id, p.dex, p.token0_address, p.token1_address, p.fee
+             FROM pools p
+             WHERE p.token0_address = ?1 AND p.token1_address = ?2 AND p.chain_id = ?3
+             UNION
+             SELECT p.address, p.chain_id, p.dex, p.token0_address, p.token1_address, p.fee
+             FROM pools p
+             WHERE p.token0_address = ?2 AND p.token1_address = ?1 AND p.chain_id = ?3
+             LIMIT 1"
+        ).map_err(|e| Error::DatabaseError(format!("prepare get_pools_by_token: {e}")))?;
+
+        let pool_result = stmt.query_row(
+            params![token0.to_string(), token1.to_string(), chain_id],
+            |row| {
+                let addr: String = row.get(0)?;
+                let chain_id: u64 = row.get(1)?;
+                let dex: String = row.get(2)?;
+                let token0_addr: String = row.get(3)?;
+                let token1_addr: String = row.get(4)?;
+                let _fee: u32 = row.get(5)?;
+
+                // Get token0 info
+                let mut token_stmt = conn.prepare(
+                    "SELECT address, chain_id, name, symbol, decimals
+                     FROM tokens
+                     WHERE address = ? AND chain_id = ?"
+                ).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+                let token0 = token_stmt.query_row(
+                    params![token0_addr, chain_id],
+                    |row| {
+                        Ok(Token {
+                            address: Address::from_str(&row.get::<_, String>(0)?)
+                                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?,
+                            chain_id: row.get(1)?,
+                            name: row.get(2)?,
+                            symbol: row.get(3)?,
+                            decimals: row.get(4)?,
+                        })
+                    },
+                )?;
+
+                // Get token1 info
+                let token1 = token_stmt.query_row(
+                    params![token1_addr, chain_id],
+                    |row| {
+                        Ok(Token {
+                            address: Address::from_str(&row.get::<_, String>(0)?)
+                                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?,
+                            chain_id: row.get(1)?,
+                            name: row.get(2)?,
+                            symbol: row.get(3)?,
+                            decimals: row.get(4)?,
+                        })
+                    },
+                )?;
+
+                let default_dt = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc);
+
+                Ok(Pool {
+                    address: Address::from_str(&addr)
+                        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?,
+                    dex,
+                    chain_id,
+                    tokens: vec![token0, token1],
+                    creation_block: 0,
+                    creation_timestamp: default_dt,
+                    last_updated_block: 0,
+                    last_updated_timestamp: default_dt,
+                })
+            },
+        );
+
+        match pool_result {
+            Ok(pool) => Ok(Some(pool)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(Error::DatabaseError(format!("get_pools_by_token error: {e}"))),
+        }
     }
 
     /// Saves a liquidity distribution record to the storage.
     ///
     /// Currently unimplemented; calling this method has no effect and always returns success.
     fn save_liquidity_distribution(&self, distribution: &LiquidityDistribution) -> Result<()> {
-        let _token0_address_str = distribution.token0.address.to_string();
-        let _token1_address_str = distribution.token1.address.to_string();
-        // TODO: Implement
+        use rusqlite::{params, TransactionBehavior};
+
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|e| Error::DatabaseError(format!("tx start: {e}")))?;
+        let data = serde_json::to_string(&distribution)
+            .map_err(|e| Error::DatabaseError(format!("serialize distribution: {e}")))?;
+        tx.execute(
+            "INSERT OR REPLACE INTO liquidity_distributions
+            (token0_address, token1_address, dex, chain_id, data, timestamp)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                distribution.token0.address.to_string(),
+                distribution.token1.address.to_string(),
+                distribution.dex,
+                distribution.chain_id,
+                data,
+                distribution.timestamp.timestamp()
+            ],
+        )
+        .map_err(|e| Error::DatabaseError(format!("save_liquidity_distribution: {e}")))?;
+
+        // Commit the transaction
+        tx.commit()
+            .map_err(|e| Error::DatabaseError(format!("commit: {e}")))?;
+
         Ok(())
+        // let _token0_address_str = distribution.token0.address.to_string();
+        // let _token1_address_str = distribution.token1.address.to_string();
+        // // TODO: Implement
+        // Ok(())
     }
 
     /// Retrieves the liquidity distribution for a given token pair, DEX, and chain ID.
@@ -297,13 +424,36 @@ impl Storage for SqliteStorage {
         &self,
         token0: Address,
         token1: Address,
-        _dex: &str,
-        _chain_id: u64,
+        dex: &str,
+        chain_id: u64,
     ) -> Result<Option<LiquidityDistribution>> {
-        let _token0_str = token0.to_string();
-        let _token1_str = token1.to_string();
-        // TODO: Implement
-        Ok(None)
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT data FROM liquidity_distributions 
+             WHERE token0_address = ?1 AND token1_address = ?2 AND dex = ?3 AND chain_id = ?4
+             ORDER BY timestamp DESC LIMIT 1"
+        ).map_err(|e| Error::DatabaseError(format!("prepare get_liquidity_distribution: {e}")))?;
+
+        let distribution_opt = stmt.query_row(
+            params![
+                token0.to_string(),
+                token1.to_string(),
+                dex,
+                chain_id
+            ],
+            |row| {
+                let data: String = row.get(0)?;
+                let distribution: LiquidityDistribution = serde_json::from_str(&data)
+                    .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+                Ok(Some(distribution))
+            }
+        );
+
+        match distribution_opt {
+            Ok(distribution) => Ok(distribution),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(Error::DatabaseError(format!("get_liquidity_distribution error: {e}"))),
+        }
     }
 }
 

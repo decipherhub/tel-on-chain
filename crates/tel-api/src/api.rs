@@ -1,4 +1,5 @@
 use tel_core::config::Config;
+use tel_core::dexes::uniswap_v2;
 use tel_core::dexes::utils::get_token;
 use tel_core::error::Error;
 use tel_core::models::{LiquidityWall, LiquidityWallsResponse, Token};
@@ -107,21 +108,36 @@ async fn get_liquidity_walls(
     // 3. Analyze and aggregate them into buy/sell walls
     // 4. Return the result
 
+    let _token0 = Address::parse_checksummed(&_token0, None).map_err(|e| ApiError {
+        message: format!("Invalid token0 address format: {}", e),
+        code: 400,
+    })?;
+    let _token1 = Address::parse_checksummed(&_token1, None).map_err(|e| ApiError {
+        message: format!("Invalid token1 address format: {}", e),
+        code: 400,
+    })?;
+
+    let chain_id = params.chain_id.unwrap_or(1);
+    let token0 = _state.storage.get_token(_token0, chain_id)?.ok_or_else(|| ApiError {
+        message: format!("Token not found: {}", _token0),
+        code: 404,
+    })?;
+
+    let token1 = _state.storage.get_token(_token1, chain_id)?.ok_or_else(|| ApiError {
+        message: format!("Token not found: {}", _token1),
+        code: 404,
+    })?;
+
+    //Get pool information using both token addresses
+    let pool = _state.storage.get_pools_by_token(_token0, _token1, chain_id)?.ok_or_else(|| ApiError {
+        message: format!("No pool found for token pair {}/{}", _token0, _token1),
+        code: 404,
+    })?;
+    let dex = params.dex.as_deref().unwrap_or("uniswap_v2");
+
     let response = LiquidityWallsResponse {
-        token0: Token {
-            address: Default::default(),
-            symbol: "TOKEN0".to_string(),
-            name: "Token 0".to_string(),
-            decimals: 18,
-            chain_id: params.chain_id.unwrap_or(1),
-        },
-        token1: Token {
-            address: Default::default(),
-            symbol: "TOKEN1".to_string(),
-            name: "Token 1".to_string(),
-            decimals: 18,
-            chain_id: params.chain_id.unwrap_or(1),
-        },
+        token0,
+        token1,
         price: 1000.0,
         buy_walls: vec![LiquidityWall {
             price_lower: 950.0,

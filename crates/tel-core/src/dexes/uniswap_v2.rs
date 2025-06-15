@@ -2,7 +2,7 @@ use crate::dexes::DexProtocol;
 use crate::error::Error;
 use crate::models::{LiquidityDistribution, Pool, PriceLiquidity, Token};
 use crate::providers::EthereumProvider;
-use crate::storage::{save_pool_async, get_pool_async, Storage};
+use crate::storage::{get_pool_async, save_liquidity_distribution_async, save_pool_async, Storage};
 use alloy_primitives::{Address, U256};
 use alloy_sol_types::sol;
 use async_trait::async_trait;
@@ -323,15 +323,18 @@ impl DexProtocol for UniswapV2 {
             token1_liquidity: reserve1_float,
             timestamp: Utc::now(),
         };
-
-        Ok(LiquidityDistribution {
+        let distribution = LiquidityDistribution {
             token0: token0.clone(),
             token1: token1.clone(),
             dex: self.name().to_string(),
             chain_id: self.chain_id(),
             price_levels: vec![price_level],
             timestamp: Utc::now(),
-        })
+        };
+        save_liquidity_distribution_async(self.storage.clone(), distribution.clone()).await?;
+
+        Ok(distribution)
+        
     }
 
     async fn calculate_swap_impact(
