@@ -12,7 +12,7 @@ use std::path::Path;
 
 // API endpoints
 const API_BASE_URL: &str = "http://127.0.0.1:8081";
-const DEFAULT_DB_PATH: &str = "sqlite:tel_on_chain.db";
+const DEFAULT_DB_PATH: &str = "sqlite_tel_on_chain.db";
 
 // Type aliases from the main project to use with the API
 type Address = alloy_primitives::Address;
@@ -171,7 +171,7 @@ impl TelOnChainUI {
                         if resp.status().is_success() {
                             Ok("Connected".to_string())
                         } else {
-                            Err(format!("API error: {}", resp.status()))
+                            Err(format!("API 33error: {}", resp.status()))
                         }
                     }
                     Err(e) => Err(format!("Connection error: {}", e)),
