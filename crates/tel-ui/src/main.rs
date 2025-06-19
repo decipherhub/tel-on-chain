@@ -159,7 +159,7 @@ impl TelOnChainUI {
                         if resp.status().is_success() {
                             Ok("Connected".to_string())
                         } else {
-                            Err(format!("API 234 error: {}", resp.status()))
+                            Err(format!("API error: {}", resp.status()))
                         }
                     }
                     Err(e) => Err(format!("Connection error: {}", e)),

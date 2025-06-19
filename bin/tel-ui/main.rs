@@ -238,7 +238,7 @@ impl TelOnChainUI {
                             Err(e) => Err(format!("Failed to parse response: {}", e)),
                         }
                     } else {
-                        Err(format!("API 222error: {}", response.status()))
+                        Err(format!("API error: {}", response.status()))
                     }
                 }
                 Err(e) => Err(format!("Request error: {}", e)),
