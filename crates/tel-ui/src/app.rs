@@ -5,18 +5,26 @@ use poll_promise::Promise;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tel_core::models::Token;
 
 // For direct database access
-use rusqlite::Connection;
+use rusqlite::{Connection, Result as SqliteResult};
 use std::path::Path;
 
 // API endpoints
 const API_BASE_URL: &str = "http://127.0.0.1:8081";
-const DEFAULT_DB_PATH: &str = "sqlite:tel_on_chain.db";
+const DEFAULT_DB_PATH: &str = "sqlite_tel_on_chain.db";
 
 // Type aliases from the main project to use with the API
 type Address = alloy_primitives::Address;
+
+#[derive(Debug, Clone, Deserialize)]
+struct Token {
+    address: Address,
+    symbol: String,
+    name: String,
+    decimals: u8,
+    chain_id: u64,
+}
 
 #[derive(Debug, Clone, Deserialize)]
 struct LiquidityWall {
@@ -89,12 +97,12 @@ struct TelOnChainUI {
     db_distributions: Vec<DbLiquidityDistribution>,
     db_query_status: String,
 
+    // Pool-Info tab state
+    pool_info_loaded: bool,             // 첫 로드 여부
+    selected_pool_idx: Option<usize>,   // 선택된 풀 인덱스
+
     // UI tabs
     selected_tab: Tab,
-
-    // ── Pool-Info 탭용 상태 ──────────────────────────
-    selected_pool_idx: Option<usize>, // 클릭한 풀 인덱스
-    pool_info_loaded: bool,           // 첫 로드 여부
 }
 
 #[derive(PartialEq)]
@@ -112,17 +120,6 @@ impl Default for Tab {
 }
 
 impl TelOnChainUI {
-    /// Creates a new `TelOnChainUI` instance with default state, dummy token lists, and initiates an API connection check.
-    ///
-    /// Initializes UI state for the application, including default DEX and chain selections, available tokens, and database paths. Also triggers an asynchronous check of the API connection status on startup.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let ctx = eframe::CreationContext::default();
-    /// let app = TelOnChainUI::new(&ctx);
-    /// assert_eq!(app.api_status, "Connecting...");
-    /// ```
     fn new(_cc: &CreationContext) -> Self {
         let mut app = TelOnChainUI {
             api_status: "Connecting...".to_string(),
@@ -145,8 +142,6 @@ impl TelOnChainUI {
             db_distributions: Vec::new(),
             db_query_status: "Not connected".to_string(),
             selected_tab: Tab::default(),
-            selected_pool_idx: None,
-            pool_info_loaded: false,
         };
 
         // Initialize with some dummy tokens for each chain
@@ -188,7 +183,7 @@ impl TelOnChainUI {
                 rt.block_on(fut)
             });
 
-            let ctx = egui::Context::default();
+            let mut ctx = egui::Context::default();
             promise.ready_mut().map(|result| {
                 match result {
                     Ok(status) => self.api_status = status.to_string(),
@@ -271,14 +266,13 @@ impl TelOnChainUI {
         }
     }
 
-    /// Queries up to 100 pool records from the database and populates the internal pool list.
+    /// Queries up to 100 liquidity pools from the database and updates the internal pool list.
     ///
-    /// Updates the database query status if an error occurs during query preparation or execution.
+    /// If the query fails, updates the database query status with an error message.
     fn query_pools(&mut self, conn: &Connection) {
         self.db_pools.clear();
 
-        let sql =
-            "SELECT address, dex, chain_id, token0_address, token1_address FROM pools LIMIT 100";
+        let sql = "SELECT address, dex, chain_id, token0_address, token1_address FROM pools LIMIT 100";
         match conn.prepare(sql) {
             Ok(mut stmt) => {
                 match stmt.query_map([], |row| {
@@ -341,6 +335,10 @@ impl TelOnChainUI {
         }
     }
 
+    /// Queries up to 100 liquidity distribution records from the database and updates the application's state.
+    ///
+    /// For each distribution, parses the JSON field to count the number of price points and stores the result in `db_distributions`.
+    /// Updates `db_query_status` with an error message if the query fails.
     fn query_distributions(&mut self, conn: &Connection) {
         self.db_distributions.clear();
 
@@ -385,6 +383,49 @@ impl TelOnChainUI {
             }
         }
     }
+
+    /// Loads pool records from the database filtered by the selected DEX and chain ID.
+///
+/// If the pools have already been loaded, the function returns immediately. Otherwise, it queries up to 200 pools matching the current DEX and chain selection, updates the internal pool list, and sets the query status message. If the database file does not exist or a query error occurs, the status message is updated accordingly.
+fn load_pool_info(&mut self) {
+    // 이미 로드했다면 스킵 (새로고침 버튼으로 강제 갱신 가능)
+    if self.pool_info_loaded { return; }
+
+    // DB 경로 확인
+    let path = std::path::Path::new(&self.db_path);
+    if !path.exists() {
+        self.db_query_status = format!("DB file not found: {}", self.db_path);
+        return;
+    }
+
+    if let Ok(conn) = rusqlite::Connection::open(path) {
+        self.db_pools.clear();
+
+        let sql = "SELECT address, dex, chain_id, token0_address, token1_address \
+                   FROM pools WHERE dex = ?1 AND chain_id = ?2 LIMIT 200";
+        let mut stmt = match conn.prepare(sql) {
+            Ok(s)  => s,
+            Err(e) => { self.db_query_status = e.to_string(); return; }
+        };
+
+        let iter = stmt
+            .query_map(rusqlite::params![self.selected_dex, self.selected_chain_id], |row| {
+                Ok(DbPool {
+                    address: row.get(0)?,
+                    dex: row.get(1)?,
+                    chain_id: row.get(2)?,
+                    token0:   row.get(3)?,
+                    token1:   row.get(4)?,
+                })
+            });
+
+        if let Ok(rows) = iter {
+            for p in rows.flatten() { self.db_pools.push(p); }
+            self.pool_info_loaded = true;
+            self.db_query_status = format!("Loaded {} pools", self.db_pools.len());
+        }
+    }
+}
 }
 
 impl App for TelOnChainUI {
@@ -564,9 +605,9 @@ impl TelOnChainUI {
         }
     }
 
-    /// Renders the Database Explorer tab, allowing users to query and view pool data from the local SQLite database.
+    /// Renders the Database Explorer tab, allowing users to input a database path, query the SQLite database, and view pool data.
     ///
-    /// Displays controls for entering the database path and querying the database. Shows the query status and a tabbed interface for different database tables. If pool data is available, presents it in a grid with truncated addresses; otherwise, prompts the user to query the database first.
+    /// Displays the current query status, provides controls for querying, and shows a tabbed interface for pools, tokens, and distributions. Pool data is presented in a grid with truncated addresses for readability. If no data is available, prompts the user to query the database first.
     fn ui_db_explorer(&mut self, ui: &mut Ui) {
         ui.heading("Database Explorer");
 
@@ -649,9 +690,21 @@ impl TelOnChainUI {
         // Distribution data would be shown similarly in the selected tab
     }
 
-    /// Displays a list of liquidity walls with price ranges, liquidity values, and DEX breakdowns in the UI.
+    /// Displays a list of liquidity walls with price ranges, liquidity values, and DEX breakdowns.
     ///
-    /// Each wall is shown with its price range, total liquidity, and a breakdown of liquidity by DEX source. Buy walls are color-coded green, sell walls red. If no walls are present, a message is displayed.
+    /// Each wall is shown with its price range and total liquidity, color-coded by buy or sell side. If DEX source data is available, a breakdown of liquidity per DEX is displayed. If no walls are present, a message is shown.
+    ///
+    /// # Parameters
+    /// - `walls`: Slice of liquidity walls to display.
+    /// - `is_buy`: If true, walls are shown as buy walls (green); otherwise, as sell walls (red).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Assume `ui` is a mutable reference to an egui::Ui and `walls` is a Vec<LiquidityWall>.
+    /// app.show_walls(ui, &walls, true); // Displays buy walls
+    /// app.show_walls(ui, &walls, false); // Displays sell walls
+    /// ```
     fn show_walls(&self, ui: &mut Ui, walls: &[LiquidityWall], is_buy: bool) {
         let color = if is_buy {
             Color32::DARK_GREEN
@@ -696,75 +749,13 @@ impl TelOnChainUI {
         }
     }
 
-    /// Loads up to 200 pools from the database filtered by the selected DEX and chain ID.
+    /// Renders the Pool Info tab, allowing users to filter, load, and browse pools by DEX and chain.
     ///
-    /// Clears the current pool list, checks for database existence, and queries the `pools` table for entries matching the selected DEX and chain ID. Updates the pool list, loading status, and query status message accordingly. If the database is missing or an error occurs, sets an appropriate status message.
-    fn load_pool_info(&mut self) {
-        use rusqlite::{params, Connection};
-
-        self.db_pools.clear();
-        let path = std::path::Path::new(&self.db_path);
-        if !path.exists() {
-            self.db_query_status = format!("DB not found: {}", self.db_path);
-            return;
-        }
-
-        let conn = match Connection::open(path) {
-            Ok(c) => c,
-            Err(e) => {
-                self.db_query_status = e.to_string();
-                return;
-            }
-        };
-
-        // 선택된 DEX·체인만 200개까지
-        let sql = "SELECT address, dex, chain_id, token0_address, token1_address
-                   FROM pools WHERE dex = ?1 AND chain_id = ?2 LIMIT 200";
-
-        let mut stmt = match conn.prepare(sql) {
-            Ok(s) => s,
-            Err(e) => {
-                self.db_query_status = e.to_string();
-                return;
-            }
-        };
-
-        let rows = stmt.query_map(params![&self.selected_dex, self.selected_chain_id], |r| {
-            Ok(DbPool {
-                address: r.get(0)?,
-                dex: r.get(1)?,
-                chain_id: r.get(2)?,
-                token0: r.get(3)?,
-                token1: r.get(4)?,
-            })
-        });
-
-        match rows {
-            Ok(iter) => {
-                for p in iter.flatten() {
-                    self.db_pools.push(p);
-                }
-                self.pool_info_loaded = true;
-                self.db_query_status = format!("Loaded {} pools", self.db_pools.len());
-            }
-            Err(e) => self.db_query_status = e.to_string(),
-        }
-    }
-
-    /// Renders the "Pool Info" tab, allowing users to filter, load, and browse pools from the database by DEX and chain.
-    ///
-    /// Displays filter controls for DEX and chain selection, a button to reload pools, and a status message. Shows a scrollable list of pools matching the current filter, and displays detailed information for the selected pool.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// // Within the egui update loop:
-    /// tel_on_chain_ui.ui_pool_info(ui);
-    /// ```
+    /// Displays filter controls for DEX and chain selection, a button to load pools, and the current database query status.
+    /// Shows a scrollable list of pools matching the selected filters. Selecting a pool displays its detailed information.
+    /// If no pools are found, a message is shown instead.
     fn ui_pool_info(&mut self, ui: &mut Ui) {
-        ui.heading("Pool Information");
-
-        // ── 필터 바 ───────────────────────────────────
+        // 상단 필터
         ui.horizontal(|ui| {
             ui.label("DEX:");
             ComboBox::from_id_source("pi_dex")
@@ -777,7 +768,7 @@ impl TelOnChainUI {
 
             ui.label("Chain:");
             ComboBox::from_id_source("pi_chain")
-                .selected_text(self.selected_chain_id.to_string())
+                .selected_text(format!("{}", self.selected_chain_id))
                 .show_ui(ui, |ui| {
                     for id in &self.available_chain_ids {
                         ui.selectable_value(&mut self.selected_chain_id, *id, id.to_string());
@@ -785,34 +776,29 @@ impl TelOnChainUI {
                 });
 
             if ui.button("Load Pools").clicked() {
-                self.pool_info_loaded = false; // 강제 새로고침
-                self.selected_pool_idx = None;
+                self.pool_info_loaded = false;   // 강제 새로고침
+                self.load_pool_info();
             }
         });
 
-        // ── DB 로드 (필요 시) ─────────────────────────
-        if !self.pool_info_loaded {
-            self.load_pool_info();
-        }
+        // 처음 진입 시 자동 로드
+        if !self.pool_info_loaded { self.load_pool_info(); }
 
-        ui.label(RichText::new(&self.db_query_status).color(Color32::GOLD));
         ui.separator();
+        ui.label(RichText::new(&self.db_query_status).color(Color32::GOLD));
 
+        // 풀 리스트
         if self.db_pools.is_empty() {
-            ui.label("No pools found for current filter.");
+            ui.label("No pools found for chosen filter.");
             return;
         }
 
-        // ── 좌측 리스트 + 우측 상세 ───────────────────
+        // 왼쪽: 리스트  |  오른쪽: 세부 정보
         ui.horizontal(|ui| {
             ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
                 for (idx, p) in self.db_pools.iter().enumerate() {
-                    let short =
-                        format!("{}…{}", &p.address[..6], &p.address[p.address.len() - 4..]);
-                    if ui
-                        .selectable_label(self.selected_pool_idx == Some(idx), short)
-                        .clicked()
-                    {
+                    let short = format!("{}...{}", &p.address[..6], &p.address[p.address.len()-4..]);
+                    if ui.selectable_label(self.selected_pool_idx == Some(idx), short).clicked() {
                         self.selected_pool_idx = Some(idx);
                     }
                 }
@@ -823,12 +809,12 @@ impl TelOnChainUI {
             if let Some(i) = self.selected_pool_idx {
                 let p = &self.db_pools[i];
                 ui.vertical(|ui| {
-                    ui.heading("Selected Pool");
-                    ui.label(format!("Address  : {}", p.address));
-                    ui.label(format!("DEX      : {}", p.dex));
-                    ui.label(format!("Chain ID : {}", p.chain_id));
-                    ui.label(format!("Token 0  : {}", p.token0));
-                    ui.label(format!("Token 1  : {}", p.token1));
+                    ui.heading("Pool Detail");
+                    ui.label(format!("Address : {}", p.address));
+                    ui.label(format!("DEX     : {}", p.dex));
+                    ui.label(format!("Chain   : {}", p.chain_id));
+                    ui.label(format!("Token 0 : {}", p.token0));
+                    ui.label(format!("Token 1 : {}", p.token1));
                 });
             } else {
                 ui.label("Select a pool to see details.");
@@ -836,13 +822,13 @@ impl TelOnChainUI {
         });
     }
 
-    /// Renders the Settings tab UI, allowing users to view the API URL, check API connection status, and see the current API status.
+    /// Renders the Settings tab UI, allowing users to view the API URL, check API connectivity, and see the current API connection status.
     ///
     /// # Examples
     ///
     /// ```
     /// // Within the egui update loop:
-    /// app.ui_settings(ui);
+    /// tel_on_chain_ui.ui_settings(ui);
     /// ```
     fn ui_settings(&mut self, ui: &mut Ui) {
         ui.heading("Settings");
