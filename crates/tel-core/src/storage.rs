@@ -17,7 +17,7 @@ pub trait Storage: Send + Sync {
     fn save_pool(&self, pool: &Pool) -> Result<()>;
     fn get_pool(&self, address: Address) -> Result<Option<Pool>>;
     fn get_pools_by_dex(&self, dex: &str, chain_id: u64) -> Result<Vec<Pool>>;
-    fn get_pools_by_token(&self, token_address: Address) -> Result<Vec<Pool>>;
+    fn get_pools_by_token(&self, token0: Address, token1: Address, chain_id: u64) -> Result<Vec<Pool>>;
 
     // Liquidity distribution operations
     fn save_liquidity_distribution(&self, distribution: &LiquidityDistribution) -> Result<()>;
@@ -204,9 +204,11 @@ impl Storage for SqliteStorage {
     /// let pools = storage.get_pools_by_token(token_address).unwrap();
     /// assert!(pools.is_empty());
     /// ```
-    fn get_pools_by_token(&self, token_address: Address) -> Result<Vec<Pool>> {
-        let _address_str = token_address.to_string();
-        // TODO: Implement
+    fn get_pools_by_token(&self, token0: Address, token1: Address, chain_id: u64) -> Result<Vec<Pool>> {
+        let _token0_str = token0.to_string();
+        let _token1_str = token1.to_string();
+        let _chain_id = chain_id;
+        // TODO: Implement: token0, token1, chain_id로 풀 검색
         Ok(vec![])
     }
 

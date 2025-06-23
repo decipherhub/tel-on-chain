@@ -8,6 +8,7 @@ license = "MIT"
 
 [dependencies]
 tel-core = { path = "../tel-core" }
+rusqlite = "0.30"
 
 # Server dependencies
 axum = "0.6.18"
