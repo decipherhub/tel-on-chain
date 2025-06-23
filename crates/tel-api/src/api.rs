@@ -138,7 +138,7 @@ async fn get_liquidity_walls(
     let pools = _state
         .storage
         .get_pools_by_token(_token0, _token1, chain_id)?;
-    if pools.is_empty() {
+    if pools.is_none() {
         return Err(ApiError {
             message: format!("No pool found for token pair {}/{}", _token0, _token1),
             code: 404,

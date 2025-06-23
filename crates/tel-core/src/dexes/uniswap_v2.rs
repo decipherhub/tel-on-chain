@@ -152,46 +152,13 @@ impl DexProtocol for UniswapV2 {
     /// let pool = uniswap_v2.get_pool(Address::from_low_u64_be(0x1234)).await?;
     /// assert_eq!(pool.address, Address::from_low_u64_be(0x1234));
     /// ```
-    async fn get_pool(&self, _pool_address: Address) -> Result<Pool, Error> {
-        // This is a placeholder implementation
-        // In production, we'd use provider.call() with correct parameters
-        let pool_result = get_pool_async(self.storage.clone(), _pool_address).await;
+    async fn get_pool(&self, pool_address: Address) -> Result<Pool, Error> {
+        let pool_result = get_pool_async(self.storage.clone(), pool_address).await;
         match pool_result {
             Ok(Some(pool)) => Ok(pool),
-            Ok(None) => Err(Error::DexError(format!(
-                "Pool not found: {}",
-                _pool_address
-            ))),
+            Ok(None) => Err(Error::DexError(format!("Pool not found: {}", pool_address))),
             Err(e) => Err(e),
         }
-        // For simplicity, creating a dummy pool
-        // let token0 = Token {
-        //     address: Address::ZERO,
-        //     symbol: "DUMMY0".to_string(),
-        //     name: "Dummy Token 0".to_string(),
-        //     decimals: 18,
-        //     chain_id: self.chain_id(),
-        // };
-
-        // let token1 = Token {
-        //     address: Address::ZERO,
-        //     symbol: "DUMMY1".to_string(),
-        //     name: "Dummy Token 1".to_string(),
-        //     decimals: 18,
-        //     chain_id: self.chain_id(),
-        // };
-
-        Ok(Pool {
-            address: pool_address,
-            dex: self.name().to_string(),
-            chain_id: self.chain_id(),
-            tokens: vec![token0, token1],
-            creation_block: 0,
-            creation_timestamp: Utc::now(),
-            last_updated_block: 0,
-            last_updated_timestamp: Utc::now(),
-            fee: 3000, // 0.3% = 3000 (0.0001% 단위)
-        })
     }
 
     /// Retrieves up to 10 Uniswap V2 pools from the factory contract and saves them to storage.

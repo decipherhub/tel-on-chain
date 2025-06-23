@@ -276,6 +276,7 @@ impl Storage for SqliteStorage {
             creation_timestamp: default_dt,
             last_updated_block: 0,
             last_updated_timestamp: default_dt,
+            fee: 3000, // 0.3% = 3000 (0.0001% 단위)
         }))
     }
 
@@ -380,6 +381,7 @@ impl Storage for SqliteStorage {
                     creation_timestamp: default_dt,
                     last_updated_block: 0,
                     last_updated_timestamp: default_dt,
+                    fee: 3000, // 0.3% = 3000 (0.0001% 단위)
                 })
             },
         );
