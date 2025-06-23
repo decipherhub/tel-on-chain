@@ -63,6 +63,14 @@ impl Indexer {
         })
     }
 
+    /// Runs the main indexing loop, periodically fetching and processing pools for all configured DEXes.
+    ///
+    /// The method continuously iterates over each enabled DEX, retrieves all pools, and processes each pool to update liquidity data. Errors encountered during pool retrieval or processing are logged, but do not interrupt the indexing cycle. The interval between cycles is determined by the configuration.
+    ///
+    /// This function runs indefinitely unless externally stopped.
+    ///
+    /// # Returns
+    /// Returns `Ok(())` if the loop is started successfully. Errors are only returned if initial setup fails; runtime errors are logged and do not break the loop.
     pub async fn start(&self) -> Result<(), Error> {
         info!("Starting indexer...");
         let interval = Duration::from_secs(self.config.indexer.interval_secs);
@@ -73,41 +81,44 @@ impl Indexer {
             info!("Indexer cycle running");
 
             // Process each configured DEX
-            for (dex_name, dex) in &self.dexes {
-                info!("Processing DEX: {}", dex_name);
+            for (dex, dex) in &self.dexes {
+                info!("Processing DEX: {}", dex);
 
                 // Get pools for this DEX
                 match dex.get_all_pools().await {
                     Ok(pools) => {
-                        info!("Found {} pools for {}", pools.len(), dex_name);
+                        info!("Found {} pools for {}", pools.len(), dex);
 
                         // Process each pool
                         for pool in pools {
                             match self.process_pool(&pool).await {
                                 Ok(_) => {
-                                    debug!("Processed pool {} on {}", pool.address, pool.dex_name)
+                                    debug!("Processed pool {} on {}", pool.address, pool.dex)
                                 }
                                 Err(e) => warn!(
                                     "Failed to process pool {} on {}: {}",
-                                    pool.address, pool.dex_name, e
+                                    pool.address, pool.dex, e
                                 ),
                             }
                         }
                     }
                     Err(e) => {
-                        warn!("Failed to get pools for {}: {}", dex_name, e);
+                        warn!("Failed to get pools for {}: {}", dex, e);
                     }
                 }
             }
         }
     }
 
+    /// Processes a liquidity pool by retrieving its liquidity distribution and saving it to storage.
+    ///
+    /// Returns an error if the DEX implementation is unknown or if fetching or saving the liquidity distribution fails.
     async fn process_pool(&self, pool: &Pool) -> Result<(), Error> {
         // Get DEX implementation
         let dex = self
             .dexes
-            .get(&pool.dex_name)
-            .ok_or_else(|| Error::UnknownDEX(pool.dex_name.clone()))?;
+            .get(&pool.dex)
+            .ok_or_else(|| Error::UnknownDEX(pool.dex.clone()))?;
 
         // Get and store liquidity distribution
         let distribution = dex.get_liquidity_distribution(pool.address).await?;
@@ -116,15 +127,36 @@ impl Indexer {
         Ok(())
     }
 
+    /// Indexes a specific liquidity pool for a given DEX and chain.
+    ///
+    /// Parses the pool address, retrieves pool details from the DEX implementation, and saves the pool data to storage.
+    ///
+    /// # Parameters
+    /// - `dex`: The name of the DEX protocol.
+    /// - `pool_address_str`: The string representation of the pool's address.
+    /// - `chain_id`: The chain ID where the pool resides.
+    ///
+    /// # Returns
+    /// The indexed `Pool` object on success.
+    ///
+    /// # Errors
+    /// Returns an error if the address is invalid, the DEX is unknown, or if fetching or saving the pool fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let pool = indexer.index_pool("uniswap", "0x1234abcd...", 1).await?;
+    /// assert_eq!(pool.dex, "uniswap");
+    /// ```
     pub async fn index_pool(
         &self,
-        dex_name: &str,
+        dex: &str,
         pool_address_str: &str,
         chain_id: u64,
     ) -> Result<Pool, Error> {
         info!(
             "Indexing pool {} on {} (chain {})",
-            pool_address_str, dex_name, chain_id
+            pool_address_str, dex, chain_id
         );
 
         // Parse address
@@ -134,8 +166,8 @@ impl Indexer {
         // Get DEX implementation
         let dex = self
             .dexes
-            .get(dex_name)
-            .ok_or_else(|| Error::UnknownDEX(dex_name.to_string()))?;
+            .get(dex)
+            .ok_or_else(|| Error::UnknownDEX(dex.to_string()))?;
 
         // Get pool details
         let pool = dex.get_pool(pool_address).await?;
@@ -186,14 +218,30 @@ impl Indexer {
         Ok(token)
     }
 
+    /// Retrieves the liquidity distribution for a specific pool on a given DEX.
+    ///
+    /// Parses the pool address, locates the DEX implementation, and fetches the liquidity distribution asynchronously. Returns an error if the DEX is unknown or the address is invalid.
+    ///
+    /// # Parameters
+    /// - `dex`: The name of the DEX protocol.
+    /// - `pool_address_str`: The string representation of the pool's address.
+    ///
+    /// # Returns
+    /// The liquidity distribution for the specified pool.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let distribution = indexer.get_liquidity_distribution("uniswap", "0x1234...abcd").await?;
+    /// ```
     pub async fn get_liquidity_distribution(
         &self,
-        dex_name: &str,
+        dex: &str,
         pool_address_str: &str,
     ) -> Result<LiquidityDistribution, Error> {
         info!(
             "Getting liquidity distribution for {} on {}",
-            pool_address_str, dex_name
+            pool_address_str, dex
         );
 
         // Parse address
@@ -203,8 +251,8 @@ impl Indexer {
         // Get DEX implementation
         let dex = self
             .dexes
-            .get(dex_name)
-            .ok_or_else(|| Error::UnknownDEX(dex_name.to_string()))?;
+            .get(dex)
+            .ok_or_else(|| Error::UnknownDEX(dex.to_string()))?;
 
         // Get liquidity distribution
         let distribution = dex.get_liquidity_distribution(pool_address).await?;
@@ -213,6 +261,30 @@ impl Indexer {
     }
 }
 
+/// Runs the indexer in either single pool mode or continuous indexing mode.
+///
+/// If both a DEX name and pool address are provided, indexes the specified pool and retrieves its liquidity distribution. Otherwise, starts the continuous indexing process for all configured DEXes and pools.
+///
+/// # Arguments
+///
+/// * `config` - The configuration for the indexer.
+/// * `dex` - Optional DEX name to index a specific pool.
+/// * `pair` - Optional pool address to index.
+///
+/// # Returns
+///
+/// Returns `Ok(())` if the indexing operation completes successfully, or an error if initialization or indexing fails.
+///
+/// # Examples
+///
+/// ```
+/// let config = load_config();
+/// // Run continuous indexing
+/// run_indexer(config, None, None).await.unwrap();
+///
+/// // Index a specific pool
+/// run_indexer(config, Some("uniswap".to_string()), Some("0x123...".to_string())).await.unwrap();
+/// ```
 pub async fn run_indexer(
     config: Config,
     dex: Option<String>,
@@ -223,28 +295,26 @@ pub async fn run_indexer(
     let indexer = Indexer::new(config, storage)?;
 
     match (dex, pair) {
-        (Some(dex_name), Some(pool_address)) => {
+        (Some(dex), Some(pool_address)) => {
             info!("Indexer running in single pool mode");
 
             // Validate DEX exists
-            if !indexer.dexes.contains_key(&dex_name) {
-                return Err(Error::UnknownDEX(dex_name));
+            if !indexer.dexes.contains_key(&dex) {
+                return Err(Error::UnknownDEX(dex));
             }
 
             // Find the chain ID for this DEX
             let chain_id = indexer
                 .dexes
-                .get(&dex_name)
+                .get(&dex)
                 .map(|dex| dex.chain_id())
                 .unwrap_or(1); // Default to Ethereum mainnet
 
-            let pool = indexer
-                .index_pool(&dex_name, &pool_address, chain_id)
-                .await?;
-            info!("Indexed pool: {} on {}", pool.address, pool.dex_name);
+            let pool = indexer.index_pool(&dex, &pool_address, chain_id).await?;
+            info!("Indexed pool: {} on {}", pool.address, pool.dex);
 
             match indexer
-                .get_liquidity_distribution(&dex_name, &pool_address)
+                .get_liquidity_distribution(&dex, &pool_address)
                 .await
             {
                 Ok(distribution) => {

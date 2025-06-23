@@ -5,7 +5,7 @@ url = "https://eth.llamarpc.com"
 timeout_secs = 30
 
 [database]
-url = "sqlite:tel_on_chain.db"
+url = "sqlite_tel_on_chain.db"
 
 [api]
 host = "127.0.0.1"
