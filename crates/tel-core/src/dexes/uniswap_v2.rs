@@ -7,9 +7,9 @@ use alloy_primitives::{Address, U256};
 use alloy_sol_types::sol;
 use async_trait::async_trait;
 use chrono::Utc;
-use IUniswapV2Pair::getReservesReturn;
 use std::sync::Arc;
 use tokio::try_join;
+use IUniswapV2Pair::getReservesReturn;
 
 sol! {
     // ── Uniswap V2 Factory ───────────────────────────────────────────
@@ -105,7 +105,11 @@ impl UniswapV2 {
             .call()
             .await
             .map_err(|e| Error::ProviderError(format!("getReserves: {e}")))?;
-        let (reserve0, reserve1, last_updated_timestamp) = (get_reserves_return.reserve0, get_reserves_return.reserve1, get_reserves_return.blockTimestampLast);
+        let (reserve0, reserve1, last_updated_timestamp) = (
+            get_reserves_return.reserve0,
+            get_reserves_return.reserve1,
+            get_reserves_return.blockTimestampLast,
+        );
         let reserve0 = reserve0.to::<u128>();
         let reserve1 = reserve1.to::<u128>();
         Ok((reserve0, reserve1, last_updated_timestamp))
@@ -177,16 +181,17 @@ impl DexProtocol for UniswapV2 {
         //     chain_id: self.chain_id(),
         // };
 
-        // Ok(Pool {
-        //     address: pool_address,
-        //     dex: self.name().to_string(),
-        //     chain_id: self.chain_id(),
-        //     tokens: vec![token0, token1],
-        //     creation_block: 0,
-        //     creation_timestamp: Utc::now(),
-        //     last_updated_block: 0,
-        //     last_updated_timestamp: Utc::now(),
-        // })
+        Ok(Pool {
+            address: pool_address,
+            dex: self.name().to_string(),
+            chain_id: self.chain_id(),
+            tokens: vec![token0, token1],
+            creation_block: 0,
+            creation_timestamp: Utc::now(),
+            last_updated_block: 0,
+            last_updated_timestamp: Utc::now(),
+            fee: 3000, // 0.3% = 3000 (0.0001% 단위)
+        })
     }
 
     /// Retrieves up to 10 Uniswap V2 pools from the factory contract and saves them to storage.
@@ -265,6 +270,7 @@ impl DexProtocol for UniswapV2 {
                 creation_timestamp: Utc::now(),
                 last_updated_block: 0,
                 last_updated_timestamp: Utc::now(),
+                fee: 3000, // 0.3% = 3000 (0.0001% 단위)
             };
 
             // 4-e. DB 저장
@@ -334,7 +340,6 @@ impl DexProtocol for UniswapV2 {
         save_liquidity_distribution_async(self.storage.clone(), distribution.clone()).await?;
 
         Ok(distribution)
-        
     }
 
     async fn calculate_swap_impact(

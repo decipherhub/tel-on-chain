@@ -188,7 +188,7 @@ impl Storage for SqliteStorage {
                 &pool.dex,
                 pool.tokens[0].address.to_string(),
                 pool.tokens[1].address.to_string(),
-                0u32 // 기본 수수료
+                pool.fee
             ],
         )
         .map_err(|e| Error::DatabaseError(format!("save_pool: {e}")))?;

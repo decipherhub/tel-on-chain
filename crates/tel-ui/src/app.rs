@@ -98,8 +98,8 @@ struct TelOnChainUI {
     db_query_status: String,
 
     // Pool-Info tab state
-    pool_info_loaded: bool,             // 첫 로드 여부
-    selected_pool_idx: Option<usize>,   // 선택된 풀 인덱스
+    pool_info_loaded: bool,           // 첫 로드 여부
+    selected_pool_idx: Option<usize>, // 선택된 풀 인덱스
 
     // UI tabs
     selected_tab: Tab,
@@ -272,7 +272,8 @@ impl TelOnChainUI {
     fn query_pools(&mut self, conn: &Connection) {
         self.db_pools.clear();
 
-        let sql = "SELECT address, dex, chain_id, token0_address, token1_address FROM pools LIMIT 100";
+        let sql =
+            "SELECT address, dex, chain_id, token0_address, token1_address FROM pools LIMIT 100";
         match conn.prepare(sql) {
             Ok(mut stmt) => {
                 match stmt.query_map([], |row| {
@@ -385,47 +386,56 @@ impl TelOnChainUI {
     }
 
     /// Loads pool records from the database filtered by the selected DEX and chain ID.
-///
-/// If the pools have already been loaded, the function returns immediately. Otherwise, it queries up to 200 pools matching the current DEX and chain selection, updates the internal pool list, and sets the query status message. If the database file does not exist or a query error occurs, the status message is updated accordingly.
-fn load_pool_info(&mut self) {
-    // 이미 로드했다면 스킵 (새로고침 버튼으로 강제 갱신 가능)
-    if self.pool_info_loaded { return; }
+    ///
+    /// If the pools have already been loaded, the function returns immediately. Otherwise, it queries up to 200 pools matching the current DEX and chain selection, updates the internal pool list, and sets the query status message. If the database file does not exist or a query error occurs, the status message is updated accordingly.
+    fn load_pool_info(&mut self) {
+        // 이미 로드했다면 스킵 (새로고침 버튼으로 강제 갱신 가능)
+        if self.pool_info_loaded {
+            return;
+        }
 
-    // DB 경로 확인
-    let path = std::path::Path::new(&self.db_path);
-    if !path.exists() {
-        self.db_query_status = format!("DB file not found: {}", self.db_path);
-        return;
-    }
+        // DB 경로 확인
+        let path = std::path::Path::new(&self.db_path);
+        if !path.exists() {
+            self.db_query_status = format!("DB file not found: {}", self.db_path);
+            return;
+        }
 
-    if let Ok(conn) = rusqlite::Connection::open(path) {
-        self.db_pools.clear();
+        if let Ok(conn) = rusqlite::Connection::open(path) {
+            self.db_pools.clear();
 
-        let sql = "SELECT address, dex, chain_id, token0_address, token1_address \
+            let sql = "SELECT address, dex, chain_id, token0_address, token1_address \
                    FROM pools WHERE dex = ?1 AND chain_id = ?2 LIMIT 200";
-        let mut stmt = match conn.prepare(sql) {
-            Ok(s)  => s,
-            Err(e) => { self.db_query_status = e.to_string(); return; }
-        };
+            let mut stmt = match conn.prepare(sql) {
+                Ok(s) => s,
+                Err(e) => {
+                    self.db_query_status = e.to_string();
+                    return;
+                }
+            };
 
-        let iter = stmt
-            .query_map(rusqlite::params![self.selected_dex, self.selected_chain_id], |row| {
-                Ok(DbPool {
-                    address: row.get(0)?,
-                    dex: row.get(1)?,
-                    chain_id: row.get(2)?,
-                    token0:   row.get(3)?,
-                    token1:   row.get(4)?,
-                })
-            });
+            let iter = stmt.query_map(
+                rusqlite::params![self.selected_dex, self.selected_chain_id],
+                |row| {
+                    Ok(DbPool {
+                        address: row.get(0)?,
+                        dex: row.get(1)?,
+                        chain_id: row.get(2)?,
+                        token0: row.get(3)?,
+                        token1: row.get(4)?,
+                    })
+                },
+            );
 
-        if let Ok(rows) = iter {
-            for p in rows.flatten() { self.db_pools.push(p); }
-            self.pool_info_loaded = true;
-            self.db_query_status = format!("Loaded {} pools", self.db_pools.len());
+            if let Ok(rows) = iter {
+                for p in rows.flatten() {
+                    self.db_pools.push(p);
+                }
+                self.pool_info_loaded = true;
+                self.db_query_status = format!("Loaded {} pools", self.db_pools.len());
+            }
         }
     }
-}
 }
 
 impl App for TelOnChainUI {
@@ -776,13 +786,15 @@ impl TelOnChainUI {
                 });
 
             if ui.button("Load Pools").clicked() {
-                self.pool_info_loaded = false;   // 강제 새로고침
+                self.pool_info_loaded = false; // 강제 새로고침
                 self.load_pool_info();
             }
         });
 
         // 처음 진입 시 자동 로드
-        if !self.pool_info_loaded { self.load_pool_info(); }
+        if !self.pool_info_loaded {
+            self.load_pool_info();
+        }
 
         ui.separator();
         ui.label(RichText::new(&self.db_query_status).color(Color32::GOLD));
@@ -797,8 +809,15 @@ impl TelOnChainUI {
         ui.horizontal(|ui| {
             ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
                 for (idx, p) in self.db_pools.iter().enumerate() {
-                    let short = format!("{}...{}", &p.address[..6], &p.address[p.address.len()-4..]);
-                    if ui.selectable_label(self.selected_pool_idx == Some(idx), short).clicked() {
+                    let short = format!(
+                        "{}...{}",
+                        &p.address[..6],
+                        &p.address[p.address.len() - 4..]
+                    );
+                    if ui
+                        .selectable_label(self.selected_pool_idx == Some(idx), short)
+                        .clicked()
+                    {
                         self.selected_pool_idx = Some(idx);
                     }
                 }
