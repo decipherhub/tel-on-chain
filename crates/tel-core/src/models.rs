@@ -24,6 +24,8 @@ pub struct Pool {
     pub creation_timestamp: DateTime<Utc>,
     pub last_updated_block: u64,
     pub last_updated_timestamp: DateTime<Utc>,
+    /// Pool fee in 0.0001% units (e.g., 0.3% = 3000)
+    pub fee: u32,
 }
 
 /// Represents a tick in Uniswap v3 or similar concentrated liquidity DEXs

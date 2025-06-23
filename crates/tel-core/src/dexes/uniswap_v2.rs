@@ -165,6 +165,7 @@ impl DexProtocol for UniswapV2 {
             creation_timestamp: Utc::now(),
             last_updated_block: 0,
             last_updated_timestamp: Utc::now(),
+            fee: 3000, // 0.3% = 3000 (0.0001% 단위)
         })
     }
 
@@ -244,6 +245,7 @@ impl DexProtocol for UniswapV2 {
                 creation_timestamp: Utc::now(),
                 last_updated_block: 0,
                 last_updated_timestamp: Utc::now(),
+                fee: 3000, // 0.3% = 3000 (0.0001% 단위)
             };
 
             // 4-e. DB 저장
