@@ -2,28 +2,24 @@
 name = "tel-ui"
 version = "0.1.0"
 edition = "2021"
-description = "UI implementation for tel-on-chain"
-authors = ["tel-on-chain team"]
-license = "MIT"
+
+[lib]
+path = "src/lib.rs"
 
 [dependencies]
+eframe = "0.27"
+egui = "0.27"
+egui_plot = "0.27"
+poll-promise = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rusqlite = "0.30"
+reqwest = { version = "0.11", features = ["json", "blocking"] }
+tokio = { version = "1.37", features = ["rt-multi-thread", "macros"] }
+alloy-primitives = "1.0.1"
+chrono = { version = "0.4", features = ["serde"] }
 tel-core = { path = "../tel-core" }
 
 # UI dependencies
-egui = "0.27.2"
-eframe = { version = "0.27.2", features = ["default_fonts", "persistence"] }
-egui_plot = "0.27.2"
-poll-promise = "0.3.0"
-tokio = { version = "1.31.0", features = ["full"] }
-serde = { version = "1.0.188", features = ["derive"] }
-serde_json = "1.0.107"
-reqwest = { version = "0.11", features = ["json"] }
-rusqlite = { version = "0.28.0", features = ["bundled"] }
-chrono = { version = "0.4.31", features = ["serde"] }
 tracing = "0.1.37"
-tracing-subscriber = "0.3.17"
-alloy-primitives = "1.0.1"  # Same version as tel-core
-
-[lib]
-name = "tel_ui"
-path = "src/lib.rs" 
+tracing-subscriber = "0.3.17" 

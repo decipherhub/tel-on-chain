@@ -1,11 +1,3 @@
-use tel_core::config::Config;
-use tel_core::dexes::uniswap_v2;
-use tel_core::dexes::utils::get_token;
-use tel_core::error::Error;
-use tel_core::models::{LiquidityWall, LiquidityWallsResponse, Token};
-use tel_core::providers::ProviderManager;
-use tel_core::storage::Storage;
-use tel_core::storage::SqliteStorage;
 use alloy_primitives::Address;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -16,6 +8,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tel_core::config::Config;
+use tel_core::dexes::uniswap_v2;
+use tel_core::dexes::utils::get_token;
+use tel_core::error::Error;
+use tel_core::models::{LiquidityWall, LiquidityWallsResponse, Token};
+use tel_core::providers::ProviderManager;
+use tel_core::storage::SqliteStorage;
+use tel_core::storage::Storage;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 
@@ -118,21 +118,32 @@ async fn get_liquidity_walls(
     })?;
 
     let chain_id = params.chain_id.unwrap_or(1);
-    let token0 = _state.storage.get_token(_token0, chain_id)?.ok_or_else(|| ApiError {
-        message: format!("Token not found: {}", _token0),
-        code: 404,
-    })?;
+    let token0 = _state
+        .storage
+        .get_token(_token0, chain_id)?
+        .ok_or_else(|| ApiError {
+            message: format!("Token not found: {}", _token0),
+            code: 404,
+        })?;
 
-    let token1 = _state.storage.get_token(_token1, chain_id)?.ok_or_else(|| ApiError {
-        message: format!("Token not found: {}", _token1),
-        code: 404,
-    })?;
+    let token1 = _state
+        .storage
+        .get_token(_token1, chain_id)?
+        .ok_or_else(|| ApiError {
+            message: format!("Token not found: {}", _token1),
+            code: 404,
+        })?;
 
     //Get pool information using both token addresses
-    let pool = _state.storage.get_pools_by_token(_token0, _token1, chain_id)?.ok_or_else(|| ApiError {
-        message: format!("No pool found for token pair {}/{}", _token0, _token1),
-        code: 404,
-    })?;
+    let pools = _state
+        .storage
+        .get_pools_by_token(_token0, _token1, chain_id)?;
+    if pools.is_empty() {
+        return Err(ApiError {
+            message: format!("No pool found for token pair {}/{}", _token0, _token1),
+            code: 404,
+        });
+    }
     let dex = params.dex.as_deref().unwrap_or("uniswap_v2");
 
     let response = LiquidityWallsResponse {
