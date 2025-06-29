@@ -2,9 +2,7 @@ use crate::dexes::DexProtocol;
 use crate::error::Error;
 use crate::models::{LiquidityDistribution, LiquidityTick, Pool, PriceLiquidity, Token};
 use crate::providers::EthereumProvider;
-use alloy_primitives::{Address, U256};
-use ethers::types::{H256, U64, Log, BlockNumber, Filter};
-use ethers::providers::Middleware;
+use alloy_primitives::{Address, B256, U256, U64};
 use crate::storage::{
     get_pool_async, get_token_async, save_liquidity_distribution_async, save_pool_async,
     save_token_async, Storage,
@@ -14,11 +12,16 @@ use chrono::Utc;
 use alloy_sol_types::sol;
 use std::sync::Arc;
 use crate::Result;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use alloy_rpc_types::{Filter, Log};
+use std::str::FromStr;
+use alloy_provider::Provider; // Import the trait for get_filter_logs
 
 const UNISWAP_V3_FACTORY: &str = "0x1F98431c8aD98523631AE4a59f267346ea31F984";
 const POOL_CREATED_SIG: &str = "PoolCreated(address,address,uint24,int24,address)";
-
-
+const HASH_POOL_CREATED: &str = "0x783cca1c0412dd0d695e784568a6a801c7d27aa39827e0033bc153c4b1173af6";
+// 이거 그냥 하드코딩해서 써도 상관없음. 다들 이렇게 쓰넹
 sol! {
     #[sol(rpc)]
     interface IERC20Metadata {
@@ -105,6 +108,23 @@ impl UniswapV3 {
         save_token_async(self.storage.clone(), token.clone()).await?;
         Ok(token)
     }
+
+    /// Build a filter for PoolCreated events from the Uniswap V3 factory
+    fn build_pool_created_filter(&self, from_block: u64, to_block: u64) -> Filter {
+        Filter::new()
+            .address(self.factory_address)
+            .topic0(B256::from_str(HASH_POOL_CREATED).unwrap())
+            .from_block(from_block)
+            .to_block(to_block)
+    }
+
+    /// Fetch logs for a given filter
+    async fn get_logs(&self, filter: Filter) -> Result<Vec<Log>> {
+        let provider = self.provider.provider();
+        provider.get_logs(&filter)
+            .await
+            .map_err(|e| Error::ProviderError(format!("get_logs: {}", e)))
+    }
 }
 
 #[async_trait]
@@ -131,67 +151,43 @@ impl DexProtocol for UniswapV3 {
     }
 
     async fn get_all_pools(&self) -> Result<Vec<Pool>> {
-        // This would require scanning events or getting pools from an indexer
-        // For simplicity, returning empty vec
-        // let inner = self.provider.provider();
-        let factory_addr: Address = UNISWAP_V3_FACTORY.parse()
-        .map_err(|e| Error::ProviderError(format!("Invalid factory address: {}", e)))?;
-        let topic0 = H256::from_slice(&ethers::utils::keccak256(POOL_CREATED_SIG.as_bytes()));
-
-        let filter = Filter::new()
-            .address(factory_addr)
-            .topic0(topic0)
-            .from_block(0u64)
-            .to_block(BlockNumber::Latest);
-
-        // 3. Fetch logs
-        let logs: Vec<Log> = provider.get_logs(&filter)
-            .await
-            .map_err(|e| Error::ProviderError(format!("get_logs: {}", e)))?;
-
-        // 4. Take latest 10 logs
+        // 최신 블록 번호 조회
+        let provider = self.provider.provider();
+        let latest_block: u64 = provider.get_block_number().await.map_err(|e| Error::ProviderError(format!("get_block_number: {}", e)))?;
+        let from_block = latest_block.saturating_sub(4999);
+        let filter = self.build_pool_created_filter(from_block, latest_block);
+        let logs = self.get_logs(filter).await?;
         let count = logs.len();
         let start = if count > 10 { count - 10 } else { 0 };
         let recent_logs = &logs[start..];
-
-        // 5. Decode and process each log
         let mut pools = Vec::with_capacity(recent_logs.len());
         for log in recent_logs {
             // topics: [topic0, token0, token1, fee]
-            let token0 = Address::from_slice(&log.topics[1].as_fixed_bytes()[12..]);
-            let token1 = Address::from_slice(&log.topics[2].as_fixed_bytes()[12..]);
-            // fee is uint24, in topics[3]
-            let fee = log.topics[3].as_fixed_bytes()[29] as u32
-                | ((log.topics[3].as_fixed_bytes()[30] as u32) << 8)
-                | ((log.topics[3].as_fixed_bytes()[31] as u32) << 16);
-
+            if log.topics().len() < 4 { continue; }
+            let token0 = Address::from_slice(&log.topics()[1].as_slice()[12..]);
+            let token1 = Address::from_slice(&log.topics()[2].as_slice()[12..]);
+            let fee_bytes = log.topics()[3].as_slice();
+            let fee = ((fee_bytes[29] as u32) << 16)
+                | ((fee_bytes[30] as u32) << 8)
+                | (fee_bytes[31] as u32);
             // data: [tickSpacing(int24)|poolAddress]
-            let data = &log.data.0;
-            // skip tickSpacing for now, only decode pool address
-            let pool_addr = Address::from_slice(&data[32 + 12..32 + 32]);
-
-            // 5-a. Fetch token metadata
+            let data_slice: &[u8] = log.data().data.as_ref();
+            if data_slice.len() < 64 { continue; }
+            let pool_addr = Address::from_slice(&data_slice[44..64]);
             let tok0 = self.fetch_or_load_token(token0).await?;
             let tok1 = self.fetch_or_load_token(token1).await?;
-
-            // 5-b. Build Pool struct
+            let block_number: u64 = log.block_number.unwrap_or(0);
             let pool = Pool {
                 address: pool_addr,
                 dex: self.name().into(),
                 chain_id: self.chain_id(),
                 tokens: vec![tok0, tok1],
-                creation_block: log.block_number
-                    .unwrap_or(U64::zero())
-                    .as_u64(),
+                creation_block: block_number,
                 creation_timestamp: Utc::now(),
-                last_updated_block: log.block_number
-                    .unwrap_or(U64::zero())
-                    .as_u64(),
+                last_updated_block: block_number,
                 last_updated_timestamp: Utc::now(),
-                fee,
+                fee: fee as u64,
             };
-
-            // 5-c. Save to DB
             save_pool_async(self.storage.clone(), pool.clone()).await?;
             pools.push(pool);
         }
