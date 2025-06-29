@@ -17,6 +17,8 @@ const DEFAULT_DB_PATH: &str = "sqlite_tel_on_chain.db";
 // Type aliases from the main project to use with the API
 type Address = alloy_primitives::Address;
 
+use tel_core::models::LiquidityDistribution;
+
 #[derive(Debug, Clone, Deserialize)]
 struct Token {
     address: Address,
@@ -52,6 +54,7 @@ struct DbPool {
     chain_id: u64,
     token0: String,
     token1: String,
+    fee: u64, // 0.0001%의 몇 배인지
 }
 
 #[derive(Debug, Clone)]
@@ -65,15 +68,14 @@ struct DbToken {
 
 #[derive(Debug, Clone)]
 struct DbLiquidityDistribution {
-    pool_address: String,
     token0_address: String,
     token1_address: String,
     timestamp: i64,
     price_points: usize,
+    distribution: Option<LiquidityDistribution>, // JSON 전체
 }
 
-#[derive(Default)]
-struct TelOnChainUI {
+pub struct TelOnChainUI {
     // API connection state
     api_status: String,
     selected_dex: String,
@@ -98,11 +100,14 @@ struct TelOnChainUI {
     db_query_status: String,
 
     // Pool-Info tab state
-    pool_info_loaded: bool,             // 첫 로드 여부
-    selected_pool_idx: Option<usize>,   // 선택된 풀 인덱스
+    pool_info_loaded: bool,           // 첫 로드 여부
+    selected_pool_idx: Option<usize>, // 선택된 풀 인덱스
 
     // UI tabs
     selected_tab: Tab,
+
+    // DB Explorer tab state
+    db_explorer_tab: DbExplorerTab,
 }
 
 #[derive(PartialEq)]
@@ -119,8 +124,21 @@ impl Default for Tab {
     }
 }
 
+#[derive(PartialEq)]
+enum DbExplorerTab {
+    Pools,
+    Tokens,
+    Distributions,
+}
+
+impl Default for DbExplorerTab {
+    fn default() -> Self {
+        DbExplorerTab::Pools
+    }
+}
+
 impl TelOnChainUI {
-    fn new(_cc: &CreationContext) -> Self {
+    pub fn new(_cc: &CreationContext) -> Self {
         let mut app = TelOnChainUI {
             api_status: "Connecting...".to_string(),
             selected_dex: "uniswap_v3".to_string(),
@@ -141,7 +159,10 @@ impl TelOnChainUI {
             db_tokens: Vec::new(),
             db_distributions: Vec::new(),
             db_query_status: "Not connected".to_string(),
+            pool_info_loaded: false,
+            selected_pool_idx: None,
             selected_tab: Tab::default(),
+            db_explorer_tab: DbExplorerTab::default(),
         };
 
         // Initialize with some dummy tokens for each chain
@@ -271,8 +292,7 @@ impl TelOnChainUI {
     /// If the query fails, updates the database query status with an error message.
     fn query_pools(&mut self, conn: &Connection) {
         self.db_pools.clear();
-
-        let sql = "SELECT address, dex, chain_id, token0_address, token1_address FROM pools LIMIT 100";
+        let sql = "SELECT address, dex, chain_id, token0_address, token1_address, fee FROM pools LIMIT 100";
         match conn.prepare(sql) {
             Ok(mut stmt) => {
                 match stmt.query_map([], |row| {
@@ -282,6 +302,7 @@ impl TelOnChainUI {
                         chain_id: row.get(2)?,
                         token0: row.get(3)?,
                         token1: row.get(4)?,
+                        fee: row.get(5)?,
                     })
                 }) {
                     Ok(pools) => {
@@ -341,29 +362,39 @@ impl TelOnChainUI {
     /// Updates `db_query_status` with an error message if the query fails.
     fn query_distributions(&mut self, conn: &Connection) {
         self.db_distributions.clear();
-
-        let sql = "SELECT pool_address, token0_address, token1_address, timestamp, distribution_json FROM liquidity_distributions LIMIT 100";
+        let sql = "SELECT token0_address, token1_address, dex, chain_id, data, timestamp FROM liquidity_distributions LIMIT 100";
         match conn.prepare(sql) {
             Ok(mut stmt) => {
                 match stmt.query_map([], |row| {
-                    let dist_json: String = row.get(4)?;
-                    // Count price points in the distribution
-                    let price_points = match serde_json::from_str::<serde_json::Value>(&dist_json) {
-                        Ok(json) => json
-                            .as_object()
-                            .and_then(|obj| obj.get("price_levels"))
-                            .and_then(|levels| levels.as_array())
-                            .map(|arr| arr.len())
-                            .unwrap_or(0),
-                        Err(_) => 0,
-                    };
-
+                    let data: String = row.get(4)?;
+                    let distribution: LiquidityDistribution = serde_json::from_str(&data)
+                        .unwrap_or_else(|_| LiquidityDistribution {
+                            token0: tel_core::models::Token {
+                                address: alloy_primitives::Address::default(),
+                                symbol: String::new(),
+                                name: String::new(),
+                                decimals: 0,
+                                chain_id: 0,
+                            },
+                            token1: tel_core::models::Token {
+                                address: alloy_primitives::Address::default(),
+                                symbol: String::new(),
+                                name: String::new(),
+                                decimals: 0,
+                                chain_id: 0,
+                            },
+                            dex: String::new(),
+                            chain_id: 0,
+                            price_levels: vec![],
+                            timestamp: chrono::Utc::now(),
+                        });
+                    let price_points = distribution.price_levels.len();
                     Ok(DbLiquidityDistribution {
-                        pool_address: row.get(0)?,
-                        token0_address: row.get(1)?,
-                        token1_address: row.get(2)?,
-                        timestamp: row.get(3)?,
+                        token0_address: row.get(0)?,
+                        token1_address: row.get(1)?,
+                        timestamp: row.get(5)?,
                         price_points,
+                        distribution: Some(distribution),
                     })
                 }) {
                     Ok(distributions) => {
@@ -385,47 +416,109 @@ impl TelOnChainUI {
     }
 
     /// Loads pool records from the database filtered by the selected DEX and chain ID.
-///
-/// If the pools have already been loaded, the function returns immediately. Otherwise, it queries up to 200 pools matching the current DEX and chain selection, updates the internal pool list, and sets the query status message. If the database file does not exist or a query error occurs, the status message is updated accordingly.
-fn load_pool_info(&mut self) {
-    // 이미 로드했다면 스킵 (새로고침 버튼으로 강제 갱신 가능)
-    if self.pool_info_loaded { return; }
+    ///
+    /// If the pools have already been loaded, the function returns immediately. Otherwise, it queries up to 200 pools matching the current DEX and chain selection, updates the internal pool list, and sets the query status message. If the database file does not exist or a query error occurs, the status message is updated accordingly.
+    fn load_pool_info(&mut self) {
+        // 이미 로드했다면 스킵 (새로고침 버튼으로 강제 갱신 가능)
+        if self.pool_info_loaded {
+            return;
+        }
 
-    // DB 경로 확인
-    let path = std::path::Path::new(&self.db_path);
-    if !path.exists() {
-        self.db_query_status = format!("DB file not found: {}", self.db_path);
-        return;
-    }
+        // DB 경로 확인
+        let path = std::path::Path::new(&self.db_path);
+        if !path.exists() {
+            self.db_query_status = format!("DB file not found: {}", self.db_path);
+            return;
+        }
 
-    if let Ok(conn) = rusqlite::Connection::open(path) {
-        self.db_pools.clear();
+        if let Ok(conn) = rusqlite::Connection::open(path) {
+            self.db_pools.clear();
 
-        let sql = "SELECT address, dex, chain_id, token0_address, token1_address \
+            let sql = "SELECT address, dex, chain_id, token0_address, token1_address \
                    FROM pools WHERE dex = ?1 AND chain_id = ?2 LIMIT 200";
-        let mut stmt = match conn.prepare(sql) {
-            Ok(s)  => s,
-            Err(e) => { self.db_query_status = e.to_string(); return; }
-        };
+            let mut stmt = match conn.prepare(sql) {
+                Ok(s) => s,
+                Err(e) => {
+                    self.db_query_status = e.to_string();
+                    return;
+                }
+            };
 
-        let iter = stmt
-            .query_map(rusqlite::params![self.selected_dex, self.selected_chain_id], |row| {
-                Ok(DbPool {
-                    address: row.get(0)?,
-                    dex: row.get(1)?,
-                    chain_id: row.get(2)?,
-                    token0:   row.get(3)?,
-                    token1:   row.get(4)?,
-                })
-            });
+            let iter = stmt.query_map(
+                rusqlite::params![self.selected_dex, self.selected_chain_id],
+                |row| {
+                    Ok(DbPool {
+                        address: row.get(0)?,
+                        dex: row.get(1)?,
+                        chain_id: row.get(2)?,
+                        token0: row.get(3)?,
+                        token1: row.get(4)?,
+                        fee: row.get(5)?,
+                    })
+                },
+            );
 
-        if let Ok(rows) = iter {
-            for p in rows.flatten() { self.db_pools.push(p); }
-            self.pool_info_loaded = true;
-            self.db_query_status = format!("Loaded {} pools", self.db_pools.len());
+            if let Ok(rows) = iter {
+                for p in rows.flatten() {
+                    self.db_pools.push(p);
+                }
+                self.pool_info_loaded = true;
+                self.db_query_status = format!("Loaded {} pools", self.db_pools.len());
+            }
         }
     }
-}
+
+    fn show_liquidity_distribution(&self, ui: &mut Ui, distribution: &DbLiquidityDistribution) {
+        if let Some(dist) = &distribution.distribution {
+            ui.heading("Liquidity Distribution");
+            ui.horizontal(|ui| {
+                ui.label("Token0 Address:");
+                ui.label(format!("{}", dist.token0.address));
+            });
+            ui.horizontal(|ui| {
+                ui.label("Token1 Address:");
+                ui.label(format!("{}", dist.token1.address));
+            });
+            ui.horizontal(|ui| {
+                ui.label("DEX:");
+                ui.label(&dist.dex);
+            });
+            ui.horizontal(|ui| {
+                ui.label("Chain ID:");
+                ui.label(format!("{}", dist.chain_id));
+            });
+            ui.horizontal(|ui| {
+                ui.label("Timestamp:");
+                let ts = dist.timestamp.format("%Y-%m-%d %H:%M:%S");
+                ui.label(format!("{}", ts));
+            });
+            ui.separator();
+            ui.heading("Price Levels");
+            for (i, level) in dist.price_levels.iter().enumerate() {
+                ui.collapsing(format!("Price Level {}", i + 1), |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Price:");
+                        ui.label(format!("{:?}", level.price));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Token0 Liquidity:");
+                        ui.label(format!("{:?}", level.token0_liquidity));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Token1 Liquidity:");
+                        ui.label(format!("{:?}", level.token1_liquidity));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Timestamp:");
+                        let ts = level.timestamp.format("%Y-%m-%d %H:%M:%S");
+                        ui.label(format!("{}", ts));
+                    });
+                });
+            }
+        } else {
+            ui.label("No distribution data");
+        }
+    }
 }
 
 impl App for TelOnChainUI {
@@ -615,8 +708,39 @@ impl TelOnChainUI {
             ui.label("Database Path:");
             ui.text_edit_singleline(&mut self.db_path);
 
-            if ui.button("Query Database").clicked() {
-                self.query_database();
+            // Query 버튼을 각 탭에 맞게 동작하도록 변경
+            let query_label = match self.db_explorer_tab {
+                DbExplorerTab::Pools => "Query Pools",
+                DbExplorerTab::Tokens => "Query Tokens",
+                DbExplorerTab::Distributions => "Query Distributions",
+            };
+            if ui.button(query_label).clicked() {
+                let path = Path::new(&self.db_path);
+                if !path.exists() {
+                    self.db_query_status = format!("Database file not found: {}", self.db_path);
+                    return;
+                }
+                match Connection::open(path) {
+                    Ok(conn) => match self.db_explorer_tab {
+                        DbExplorerTab::Pools => {
+                            self.query_pools(&conn);
+                            self.db_query_status = format!("Queried {} pools", self.db_pools.len());
+                        }
+                        DbExplorerTab::Tokens => {
+                            self.query_tokens(&conn);
+                            self.db_query_status =
+                                format!("Queried {} tokens", self.db_tokens.len());
+                        }
+                        DbExplorerTab::Distributions => {
+                            self.query_distributions(&conn);
+                            self.db_query_status =
+                                format!("Queried {} distributions", self.db_distributions.len());
+                        }
+                    },
+                    Err(e) => {
+                        self.db_query_status = format!("Failed to connect to database: {}", e);
+                    }
+                }
             }
         });
 
@@ -632,62 +756,108 @@ impl TelOnChainUI {
 
         // Use tabs for different database tables
         ui.horizontal(|ui| {
-            ui.selectable_label(true, format!("Pools ({})", self.db_pools.len()));
-            ui.selectable_label(false, format!("Tokens ({})", self.db_tokens.len()));
-            ui.selectable_label(
-                false,
-                format!("Distributions ({})", self.db_distributions.len()),
-            );
+            if ui
+                .selectable_label(
+                    self.db_explorer_tab == DbExplorerTab::Pools,
+                    format!("Pools ({})", self.db_pools.len()),
+                )
+                .clicked()
+            {
+                self.db_explorer_tab = DbExplorerTab::Pools;
+            }
+            if ui
+                .selectable_label(
+                    self.db_explorer_tab == DbExplorerTab::Tokens,
+                    format!("Tokens ({})", self.db_tokens.len()),
+                )
+                .clicked()
+            {
+                self.db_explorer_tab = DbExplorerTab::Tokens;
+            }
+            if ui
+                .selectable_label(
+                    self.db_explorer_tab == DbExplorerTab::Distributions,
+                    format!("Distributions ({})", self.db_distributions.len()),
+                )
+                .clicked()
+            {
+                self.db_explorer_tab = DbExplorerTab::Distributions;
+            }
         });
 
-        // Show pool data
-        if !self.db_pools.is_empty() {
-            ui.separator();
-            ui.heading("Pool Data");
+        ui.separator();
 
-            Grid::new("pools_grid").striped(true).show(ui, |ui| {
-                ui.label(RichText::new("Address").strong());
-                ui.label(RichText::new("DEX").strong());
-                ui.label(RichText::new("Chain").strong());
-                ui.label(RichText::new("Token 0").strong());
-                ui.label(RichText::new("Token 1").strong());
-                ui.end_row();
-
-                for pool in &self.db_pools {
-                    // Truncated address for display
-                    let short_address = format!(
-                        "{}...{}",
-                        &pool.address[0..6],
-                        &pool.address[pool.address.len() - 4..]
-                    );
-
-                    ui.label(short_address);
-                    ui.label(&pool.dex);
-                    ui.label(format!("{}", pool.chain_id));
-
-                    // Truncated token addresses
-                    let token0_short = format!(
-                        "{}...{}",
-                        &pool.token0[0..6],
-                        &pool.token0[pool.token0.len() - 4..]
-                    );
-                    ui.label(token0_short);
-
-                    let token1_short = format!(
-                        "{}...{}",
-                        &pool.token1[0..6],
-                        &pool.token1[pool.token1.len() - 4..]
-                    );
-                    ui.label(token1_short);
-
-                    ui.end_row();
+        match self.db_explorer_tab {
+            DbExplorerTab::Pools => {
+                if !self.db_pools.is_empty() {
+                    ui.heading("Pool Data");
+                    Grid::new("pools_grid").striped(true).show(ui, |ui| {
+                        ui.label(RichText::new("Address").strong());
+                        ui.label(RichText::new("DEX").strong());
+                        ui.label(RichText::new("Chain").strong());
+                        ui.label(RichText::new("Token 0").strong());
+                        ui.label(RichText::new("Token 1").strong());
+                        ui.label(RichText::new("Fee").strong());
+                        ui.end_row();
+                        for pool in &self.db_pools {
+                            ui.label(&pool.address);
+                            ui.label(&pool.dex);
+                            ui.label(format!("{}", pool.chain_id));
+                            ui.label(&pool.token0);
+                            ui.label(&pool.token1);
+                            ui.label(format!("{}", pool.fee));
+                            ui.end_row();
+                        }
+                    });
+                } else {
+                    ui.label("No pool data available. Query the database first.");
                 }
-            });
-        } else {
-            ui.label("No pool data available. Query the database first.");
+            }
+            DbExplorerTab::Tokens => {
+                if !self.db_tokens.is_empty() {
+                    ui.heading("Token Data");
+                    Grid::new("tokens_grid").striped(true).show(ui, |ui| {
+                        ui.label(RichText::new("Address").strong());
+                        ui.label(RichText::new("Symbol").strong());
+                        ui.label(RichText::new("Name").strong());
+                        ui.label(RichText::new("Decimals").strong());
+                        ui.label(RichText::new("Chain").strong());
+                        ui.end_row();
+                        for token in &self.db_tokens {
+                            let short_address = format!(
+                                "{}...{}",
+                                &token.address[0..6],
+                                &token.address[token.address.len() - 4..]
+                            );
+                            ui.label(short_address);
+                            ui.label(&token.symbol);
+                            ui.label(&token.name);
+                            ui.label(format!("{}", token.decimals));
+                            ui.label(format!("{}", token.chain_id));
+                            ui.end_row();
+                        }
+                    });
+                } else {
+                    ui.label("No token data available. Query the database first.");
+                }
+            }
+            DbExplorerTab::Distributions => {
+                if !self.db_distributions.is_empty() {
+                    ui.heading("Distribution Data");
+                    ui.separator();
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        for (i, dist) in self.db_distributions.iter().enumerate() {
+                            ui.collapsing(format!("Distribution {}", i + 1), |ui| {
+                                self.show_liquidity_distribution(ui, dist);
+                            });
+                            ui.separator();
+                        }
+                    });
+                } else {
+                    ui.label("No distribution data available. Query the database first.");
+                }
+            }
         }
-
-        // Distribution data would be shown similarly in the selected tab
     }
 
     /// Displays a list of liquidity walls with price ranges, liquidity values, and DEX breakdowns.
@@ -776,13 +946,15 @@ impl TelOnChainUI {
                 });
 
             if ui.button("Load Pools").clicked() {
-                self.pool_info_loaded = false;   // 강제 새로고침
+                self.pool_info_loaded = false; // 강제 새로고침
                 self.load_pool_info();
             }
         });
 
         // 처음 진입 시 자동 로드
-        if !self.pool_info_loaded { self.load_pool_info(); }
+        if !self.pool_info_loaded {
+            self.load_pool_info();
+        }
 
         ui.separator();
         ui.label(RichText::new(&self.db_query_status).color(Color32::GOLD));
@@ -797,8 +969,15 @@ impl TelOnChainUI {
         ui.horizontal(|ui| {
             ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
                 for (idx, p) in self.db_pools.iter().enumerate() {
-                    let short = format!("{}...{}", &p.address[..6], &p.address[p.address.len()-4..]);
-                    if ui.selectable_label(self.selected_pool_idx == Some(idx), short).clicked() {
+                    let short = format!(
+                        "{}...{}",
+                        &p.address[..6],
+                        &p.address[p.address.len() - 4..]
+                    );
+                    if ui
+                        .selectable_label(self.selected_pool_idx == Some(idx), short)
+                        .clicked()
+                    {
                         self.selected_pool_idx = Some(idx);
                     }
                 }
