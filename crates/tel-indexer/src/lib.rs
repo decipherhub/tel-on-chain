@@ -92,13 +92,9 @@ impl Indexer {
                 match dex.get_all_pools().await {
                     Ok(pools) => {
                         info!("Found {} pools for {}", pools.len(), dex_name);
-
-                        // Process each pool
                         for pool in pools {
                             match self.process_pool(&pool).await {
-                                Ok(_) => {
-                                    debug!("Processed pool {} on {}", pool.address, pool.dex)
-                                }
+                                Ok(_) => debug!("Processed pool {} on {}", pool.address, pool.dex),
                                 Err(e) => warn!(
                                     "Failed to process pool {} on {}: {}",
                                     pool.address, pool.dex, e

@@ -80,6 +80,7 @@ impl DexProtocol for Sushiswap {
             creation_timestamp: Utc::now(),
             last_updated_block: 0,
             last_updated_timestamp: Utc::now(),
+            fee: 3000,
         })
     }
 

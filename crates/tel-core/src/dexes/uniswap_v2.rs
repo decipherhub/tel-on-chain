@@ -2,14 +2,18 @@ use crate::dexes::DexProtocol;
 use crate::error::Error;
 use crate::models::{LiquidityDistribution, Pool, PriceLiquidity, Token};
 use crate::providers::EthereumProvider;
-use crate::storage::{get_pool_async, save_liquidity_distribution_async, save_pool_async, Storage};
+use crate::storage::{
+    get_pool_async, get_token_async, save_liquidity_distribution_async, save_pool_async,
+    save_token_async, Storage,
+};
 use alloy_primitives::{Address, U256};
 use alloy_sol_types::sol;
 use async_trait::async_trait;
 use chrono::Utc;
-use IUniswapV2Pair::getReservesReturn;
 use std::sync::Arc;
 use tokio::try_join;
+use tracing::{debug, error, info, warn};
+use IUniswapV2Pair::getReservesReturn;
 
 sol! {
     // ── Uniswap V2 Factory ───────────────────────────────────────────
@@ -55,32 +59,43 @@ impl UniswapV2 {
         }
     }
 
-    // async fn fetch_or_load_token(&self, addr: Address) -> Result<Token, Error> {
-    //     // 1) 이미 DB에 있으면 바로 반환
-    //     if let Some(tok) = get_token_async(self.storage.clone(), addr, self.chain_id()).await? {
-    //         return Ok(tok);
-    //     }
+    async fn fetch_or_load_token(&self, addr: Address) -> Result<Token, Error> {
+        let token_opt = get_token_async(self.storage.clone(), addr, self.chain_id()).await?;
 
-    //     // 2) on-chain 메타데이터 조회
-    //     let erc20 = IERC20Metadata::new(addr, self.provider.clone());
-    //     let (symbol, name, decimals) = futures::future::try_join!(
-    //         erc20.symbol().call(),
-    //         erc20.name().call(),
-    //         erc20.decimals().call()
-    //     )?;
+        if let Some(tok) = token_opt {
+            return Ok(tok);
+        }
 
-    //     let token = Token {
-    //         address: addr,
-    //         symbol,
-    //         name,
-    //         decimals: decimals as u8,
-    //         chain_id: self.chain_id(),
-    //     };
+        // (여기서부터) DB에 없을 때만 on-chain에서 메타데이터 조회 및 저장
+        let erc20 = IERC20Metadata::new(addr, self.provider.provider());
+        let symbol = erc20
+            .symbol()
+            .call()
+            .await
+            .map_err(|e| Error::ProviderError(format!("{e}")))?;
+        let name = erc20
+            .name()
+            .call()
+            .await
+            .map_err(|e| Error::ProviderError(format!("{e}")))?;
+        let decimals = erc20
+            .decimals()
+            .call()
+            .await
+            .map_err(|e| Error::ProviderError(format!("{e}")))?;
 
-    //     // 3) DB에 저장
-    //     save_token_async(self.storage.clone(), token.clone()).await?;
-    //     Ok(token)
-    // }
+        let token = Token {
+            address: addr,
+            symbol,
+            name,
+            decimals: decimals as u8,
+            chain_id: self.chain_id(),
+        };
+
+        // 3) DB에 저장
+        save_token_async(self.storage.clone(), token.clone()).await?;
+        Ok(token)
+    }
 
     /// Retrieves the reserves and last update timestamp for a given pool address.
     ///
@@ -105,7 +120,11 @@ impl UniswapV2 {
             .call()
             .await
             .map_err(|e| Error::ProviderError(format!("getReserves: {e}")))?;
-        let (reserve0, reserve1, last_updated_timestamp) = (get_reserves_return.reserve0, get_reserves_return.reserve1, get_reserves_return.blockTimestampLast);
+        let (reserve0, reserve1, last_updated_timestamp) = (
+            get_reserves_return.reserve0,
+            get_reserves_return.reserve1,
+            get_reserves_return.blockTimestampLast,
+        );
         let reserve0 = reserve0.to::<u128>();
         let reserve1 = reserve1.to::<u128>();
         Ok((reserve0, reserve1, last_updated_timestamp))
@@ -247,24 +266,21 @@ impl DexProtocol for UniswapV2 {
                 .await
                 .map_err(|e| Error::ProviderError(format!("token1(): {e}")))?;
 
-            // 4-d. Token stub & Pool 객체
-            let stub = |addr| Token {
-                address: addr,
-                symbol: String::new(),
-                name: String::new(),
-                decimals: 0,
-                chain_id: self.chain_id(),
-            };
+            // 4-d. 실제 메타데이터 토큰 fetch
+
+            let token0 = self.fetch_or_load_token(t0_addr).await?;
+            let token1 = self.fetch_or_load_token(t1_addr).await?;
 
             let pool = Pool {
                 address: pair_addr,
                 dex: self.name().into(),
                 chain_id: self.chain_id(),
-                tokens: vec![stub(t0_addr), stub(t1_addr)],
+                tokens: vec![token0, token1],
                 creation_block: 0,
                 creation_timestamp: Utc::now(),
                 last_updated_block: 0,
                 last_updated_timestamp: Utc::now(),
+                fee: 3000, // 0.3% = 3000 (UniswapV2 표준)
             };
 
             // 4-e. DB 저장
@@ -334,7 +350,6 @@ impl DexProtocol for UniswapV2 {
         save_liquidity_distribution_async(self.storage.clone(), distribution.clone()).await?;
 
         Ok(distribution)
-        
     }
 
     async fn calculate_swap_impact(

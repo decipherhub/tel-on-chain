@@ -81,13 +81,38 @@ impl Indexer {
             info!("Indexer cycle running");
 
             // Process each configured DEX
-            for (dex, dex) in &self.dexes {
-                info!("Processing DEX: {}", dex);
+            for (dex_name, dex) in &self.dexes {
+                info!("Processing DEX: {}", dex_name);
+
+                // UniswapV2의 경우 DB에 이미 pool이 있으면 get_all_pools를 건너뜀
+                if dex_name == "uniswap_v2" {
+                    let pools_in_db = self.storage.get_pools_by_dex("uniswap_v2", dex.chain_id());
+                    if let Ok(pools) = pools_in_db {
+                        if !pools.is_empty() {
+                            info!(
+                                "DB에 이미 uniswap_v2 pool이 {}개 있으므로 on-chain 조회를 건너뜀",
+                                pools.len()
+                            );
+                            for pool in pools {
+                                match self.process_pool(&pool).await {
+                                    Ok(_) => {
+                                        debug!("Processed pool {} on {}", pool.address, pool.dex)
+                                    }
+                                    Err(e) => warn!(
+                                        "Failed to process pool {} on {}: {}",
+                                        pool.address, pool.dex, e
+                                    ),
+                                }
+                            }
+                            continue;
+                        }
+                    }
+                }
 
                 // Get pools for this DEX
                 match dex.get_all_pools().await {
                     Ok(pools) => {
-                        info!("Found {} pools for {}", pools.len(), dex);
+                        info!("Found {} pools for {}", pools.len(), dex_name);
 
                         // Process each pool
                         for pool in pools {
@@ -103,7 +128,7 @@ impl Indexer {
                         }
                     }
                     Err(e) => {
-                        warn!("Failed to get pools for {}: {}", dex, e);
+                        warn!("Failed to get pools for {}: {}", dex_name, e);
                     }
                 }
             }
