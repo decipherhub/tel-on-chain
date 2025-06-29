@@ -21,7 +21,7 @@ num-bigint = "0.4.4"
 num-traits = "0.2.16"
 rust_decimal = "1.31.0"
 async-trait = "0.1.74"
-
+ethers = "2.0"
 # Alloy dependencies
 alloy-primitives = { version = "1.0.1", features = ["serde"] }
 alloy-sol-types = "1.0.1"
