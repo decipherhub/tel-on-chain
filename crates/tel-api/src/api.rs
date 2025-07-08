@@ -260,6 +260,9 @@ pub async fn run_server(config: Config) -> Result<(), Error> {
     // Initialize the provider manager
     let provider_manager = Arc::new(ProviderManager::new(
         &config.ethereum,
+        None,
+        None,
+        None,
     )?);
 
     let state = Arc::new(AppState {
