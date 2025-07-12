@@ -1,4 +1,4 @@
-use crate::models::{LiquidityDistribution, LiquidityWall, LiquidityWallsResponse, PriceLiquidity};
+use crate::models::{LiquidityDistribution, LiquidityWall, PriceLiquidity};
 use std::collections::HashMap;
 
 /// Identifies liquidity walls from a set of liquidity distributions

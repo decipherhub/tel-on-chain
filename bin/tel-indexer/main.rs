@@ -1,7 +1,7 @@
 use clap::Parser;
 use tel_core::config;
 use tel_indexer::run_indexer;
-use tracing::{info, Level};
+use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
 #[derive(Parser)]

@@ -1,10 +1,9 @@
 use crate::dexes::DexProtocol;
 use crate::error::Error;
-use crate::models::{LiquidityDistribution, LiquidityTick, Pool, PriceLiquidity, Token};
+use crate::models::{LiquidityDistribution, Pool, PriceLiquidity};
 use crate::providers::EthereumProvider;
 use alloy_primitives::{Address, U256};
 use async_trait::async_trait;
-use chrono::Utc;
 use std::sync::Arc;
 use crate::Result;
 

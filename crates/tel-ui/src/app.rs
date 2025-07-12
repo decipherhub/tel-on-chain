@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 // For direct database access
-use rusqlite::{Connection, Result as SqliteResult};
+use rusqlite::Connection;
 use std::path::Path;
 
 // API endpoints
@@ -204,7 +204,7 @@ impl TelOnChainUI {
                 rt.block_on(fut)
             });
 
-            let mut ctx = egui::Context::default();
+            let ctx = egui::Context::default();
             promise.ready_mut().map(|result| {
                 match result {
                     Ok(status) => self.api_status = status.to_string(),

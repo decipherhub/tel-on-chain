@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::{
     dexes::DexProtocol,
-    models::{LiquidityDistribution, Pool, Token},
+    models::{LiquidityDistribution, Pool},
     providers::{EthereumProvider, ProviderManager},
     Error, Result,
 };
