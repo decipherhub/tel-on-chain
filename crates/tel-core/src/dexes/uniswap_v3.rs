@@ -235,50 +235,51 @@ impl DexProtocol for UniswapV3 {
         pool_address: Address,
     ) -> Result<LiquidityDistribution> {
         // Mock implementation
-        let dummy_token0 = Token {
-            address: Address::ZERO,
-            symbol: "MOCK0".to_string(),
-            name: "Mock Token 0".to_string(),
-            decimals: 18,
-            chain_id: self.chain_id(),
-        };
-        let dummy_token1 = Token {
-            address: Address::ZERO,
-            symbol: "MOCK1".to_string(),
-            name: "Mock Token 1".to_string(),
-            decimals: 18,
-            chain_id: self.chain_id(),
-        };
+        // let dummy_token0 = Token {
+        //     address: Address::ZERO,
+        //     symbol: "MOCK0".to_string(),
+        //     name: "Mock Token 0".to_string(),
+        //     decimals: 18,
+        //     chain_id: self.chain_id(),
+        // };
+        // let dummy_token1 = Token {
+        //     address: Address::ZERO,
+        //     symbol: "MOCK1".to_string(),
+        //     name: "Mock Token 1".to_string(),
+        //     decimals: 18,
+        //     chain_id: self.chain_id(),
+        // };
 
-        let price_levels = vec![
-            PriceLiquidity {
-                price: 1.0,
-                token0_liquidity: 100.0,
-                token1_liquidity: 100.0,
-                timestamp: Utc::now(),
-            },
-            PriceLiquidity {
-                price: 1.05,
-                token0_liquidity: 90.0,
-                token1_liquidity: 110.0,
-                timestamp: Utc::now(),
-            },
-            PriceLiquidity {
-                price: 0.95,
-                token0_liquidity: 110.0,
-                token1_liquidity: 90.0,
-                timestamp: Utc::now(),
-            },
-        ];
+        // let price_levels = vec![
+        //     PriceLiquidity {
+        //         price: 1.0,
+        //         token0_liquidity: 100.0,
+        //         token1_liquidity: 100.0,
+        //         timestamp: Utc::now(),
+        //     },
+        //     PriceLiquidity {
+        //         price: 1.05,
+        //         token0_liquidity: 90.0,
+        //         token1_liquidity: 110.0,
+        //         timestamp: Utc::now(),
+        //     },
+        //     PriceLiquidity {
+        //         price: 0.95,
+        //         token0_liquidity: 110.0,
+        //         token1_liquidity: 90.0,
+        //         timestamp: Utc::now(),
+        //     },
+        // ];
 
-        Ok(LiquidityDistribution {
-            token0: dummy_token0,
-            token1: dummy_token1,
-            dex: self.name().into(),
-            chain_id: self.chain_id(),
-            price_levels,
-            timestamp: Utc::now(),
-        })
+        // Ok(LiquidityDistribution {
+        //     token0: dummy_token0,
+        //     token1: dummy_token1,
+        //     dex: self.name().into(),
+        //     chain_id: self.chain_id(),
+        //     price_levels,
+        //     timestamp: Utc::now(),
+        // })
+        Err(Error::NotImplemented)
     }
 
     async fn calculate_swap_impact(

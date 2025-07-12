@@ -1,6 +1,6 @@
 use crate::dexes::DexProtocol;
 use crate::error::Error;
-use crate::models::{LiquidityDistribution, Pool, PriceLiquidity, Token};
+use crate::models::{LiquidityDistribution, Pool, PriceLiquidity, Side, Token};
 use crate::providers::EthereumProvider;
 use crate::storage::{
     get_pool_async, get_token_async, save_liquidity_distribution_async, save_pool_async,
@@ -150,7 +150,9 @@ impl UniswapV2 {
                 };
     
                 PriceLiquidity {
-                    price: current_price * factor,
+                    side: if factor >= 1.0 { Side::Sell } else { Side::Buy },
+                    lower_price: current_price * factor,
+                    upper_price: current_price * factor,
                     token0_liquidity: liq0,
                     token1_liquidity: liq1,
                     timestamp: Utc::now(),
@@ -365,7 +367,9 @@ impl DexProtocol for UniswapV2 {
         let per_tick_levels: Vec<PriceLiquidity> = price_levels
             .windows(2)
             .map(|w| PriceLiquidity {
-                price:             (w[0].price + w[1].price) * 0.5, // mid-price of the band
+                side: w[0].side,
+                lower_price: w[0].upper_price,
+                upper_price: w[1].upper_price,
                 token0_liquidity:  (w[1].token0_liquidity - w[0].token0_liquidity).abs(),
                 token1_liquidity:  (w[1].token1_liquidity - w[0].token1_liquidity).abs(),
                 timestamp:         Utc::now(),
@@ -373,6 +377,7 @@ impl DexProtocol for UniswapV2 {
             .collect();
 
         let distribution = LiquidityDistribution {
+            current_price: current_price,
             token0: token0.clone(),
             token1: token1.clone(),
             dex: self.name().to_string(),
