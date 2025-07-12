@@ -1,12 +1,9 @@
 use crate::dexes::DexProtocol;
 use crate::error::Error;
-use crate::models::{LiquidityDistribution, Pool, PriceLiquidity};
+use crate::models::{LiquidityDistribution, Pool, PriceLiquidity, Token};
 use crate::providers::EthereumProvider;
 use alloy_primitives::{Address, B256, U256, U64};
-use crate::storage::{
-    get_pool_async, get_token_async, save_liquidity_distribution_async, save_pool_async,
-    save_token_async, Storage,
-};
+use crate::storage::{    get_pool_async, get_token_async, save_liquidity_distribution_async, save_pool_async,    save_token_async, Storage,};
 use async_trait::async_trait;
 use chrono::Utc;
 use alloy_sol_types::sol;
@@ -17,11 +14,11 @@ use serde_json::json;
 use alloy_rpc_types::{Filter, Log};
 use std::str::FromStr;
 use alloy_provider::Provider; // Import the trait for get_filter_logs
+use tracing::info;
 
 const UNISWAP_V3_FACTORY: &str = "0x1F98431c8aD98523631AE4a59f267346ea31F984";
 const POOL_CREATED_SIG: &str = "PoolCreated(address,address,uint24,int24,address)";
-const HASH_POOL_CREATED: &str = "0x783cca1c0412dd0d695e784568a6a801c7d27aa39827e0033bc153c4b1173af6";
-// 이거 그냥 하드코딩해서 써도 상관없음. 다들 이렇게 쓰넹
+const HASH_POOL_CREATED: &str = "0x783cca1c0412dd0d695e784568c96da2e9c22ff989357a2e8b1d9b2b4e6b7118";
 sol! {
     #[sol(rpc)]
     interface IERC20Metadata {
@@ -78,7 +75,6 @@ impl UniswapV3 {
             return Ok(tok);
         }
 
-        // (여기서부터) DB에 없을 때만 on-chain에서 메타데이터 조회 및 저장
         let erc20 = IERC20Metadata::new(addr, self.provider.provider());
         let symbol = erc20
             .symbol()
@@ -104,7 +100,6 @@ impl UniswapV3 {
             chain_id: self.chain_id(),
         };
 
-        // 3) DB에 저장
         save_token_async(self.storage.clone(), token.clone()).await?;
         Ok(token)
     }
@@ -146,22 +141,62 @@ impl DexProtocol for UniswapV3 {
     }
 
     async fn get_pool(&self, pool_address: Address) -> Result<Pool> {
-        // TODO: Implement
-        Err(Error::NotImplemented)
+        // Mock implementation
+        let dummy_token0 = Token {
+            address: Address::ZERO,
+            symbol: "MOCK0".to_string(),
+            name: "Mock Token 0".to_string(),
+            decimals: 18,
+            chain_id: self.chain_id(),
+        };
+        let dummy_token1 = Token {
+            address: Address::ZERO,
+            symbol: "MOCK1".to_string(),
+            name: "Mock Token 1".to_string(),
+            decimals: 18,
+            chain_id: self.chain_id(),
+        };
+
+        Ok(Pool {
+            address: pool_address,
+            dex: self.name().into(),
+            chain_id: self.chain_id(),
+            tokens: vec![dummy_token0, dummy_token1],
+            creation_block: 0,
+            creation_timestamp: Utc::now(),
+            last_updated_block: 0,
+            last_updated_timestamp: Utc::now(),
+            fee: 3000,
+        })
     }
 
     async fn get_all_pools(&self) -> Result<Vec<Pool>> {
-        // 최신 블록 번호 조회
         let provider = self.provider.provider();
-        let latest_block: u64 = provider.get_block_number().await.map_err(|e| Error::ProviderError(format!("get_block_number: {}", e)))?;
-        let from_block = latest_block.saturating_sub(4999);
-        let filter = self.build_pool_created_filter(from_block, latest_block);
-        let logs = self.get_logs(filter).await?;
-        let count = logs.len();
-        let start = if count > 10 { count - 10 } else { 0 };
-        let recent_logs = &logs[start..];
-        let mut pools = Vec::with_capacity(recent_logs.len());
-        for log in recent_logs {
+        //let latest_block: u64 = provider.get_block_number().await.map_err(|e| Error::ProviderError(format!("get_block_number: {}", e)))?;
+        let latest_block = 12500000; // For testing, replace with actual block number retrieval
+        //let mut from_block = 12469621;
+        let mut from_block = 12489621;
+
+        let mut all_logs = Vec::new();
+        let mut i = 0;
+        while from_block < latest_block && i < 10{
+            let to_block = (from_block + 9999).min(latest_block);
+            info!("Fetching logs from block {} to {}", from_block, to_block);
+            let filter = self.build_pool_created_filter(from_block, to_block);
+            let logs = self.get_logs(filter).await?;
+            info!("Found {} logs in this range", logs.len());
+            all_logs.extend(logs);
+            from_block = to_block + 1;
+            i += 1;
+        }
+
+        info!("Found a total of {} pools", all_logs.len());
+
+        let mut pools = Vec::with_capacity(all_logs.len());
+        let mut pools_count = 0;
+        for log in &all_logs {
+            if pools_count >= 10 { break; }
+            info!("Processing log: topics={:?}, data={:?}", log.topics(), log.data());
             // topics: [topic0, token0, token1, fee]
             if log.topics().len() < 4 { continue; }
             let token0 = Address::from_slice(&log.topics()[1].as_slice()[12..]);
@@ -190,6 +225,7 @@ impl DexProtocol for UniswapV3 {
             };
             save_pool_async(self.storage.clone(), pool.clone()).await?;
             pools.push(pool);
+            pools_count += 1;
         }
         Ok(pools)
     }
@@ -198,8 +234,51 @@ impl DexProtocol for UniswapV3 {
         &self,
         pool_address: Address,
     ) -> Result<LiquidityDistribution> {
-        // TODO: Implement
-        Err(Error::NotImplemented)
+        // Mock implementation
+        let dummy_token0 = Token {
+            address: Address::ZERO,
+            symbol: "MOCK0".to_string(),
+            name: "Mock Token 0".to_string(),
+            decimals: 18,
+            chain_id: self.chain_id(),
+        };
+        let dummy_token1 = Token {
+            address: Address::ZERO,
+            symbol: "MOCK1".to_string(),
+            name: "Mock Token 1".to_string(),
+            decimals: 18,
+            chain_id: self.chain_id(),
+        };
+
+        let price_levels = vec![
+            PriceLiquidity {
+                price: 1.0,
+                token0_liquidity: 100.0,
+                token1_liquidity: 100.0,
+                timestamp: Utc::now(),
+            },
+            PriceLiquidity {
+                price: 1.05,
+                token0_liquidity: 90.0,
+                token1_liquidity: 110.0,
+                timestamp: Utc::now(),
+            },
+            PriceLiquidity {
+                price: 0.95,
+                token0_liquidity: 110.0,
+                token1_liquidity: 90.0,
+                timestamp: Utc::now(),
+            },
+        ];
+
+        Ok(LiquidityDistribution {
+            token0: dummy_token0,
+            token1: dummy_token1,
+            dex: self.name().into(),
+            chain_id: self.chain_id(),
+            price_levels,
+            timestamp: Utc::now(),
+        })
     }
 
     async fn calculate_swap_impact(

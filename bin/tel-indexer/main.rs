@@ -1,5 +1,5 @@
 use clap::Parser;
-use tel_core::config;
+use tel_core::{config, dexes::uniswap_v3};
 use tel_indexer::run_indexer;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
@@ -39,10 +39,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = config::load_config(&args.config)?;
 
     // Run indexer
-    info!("Starting indexer with config: {:?}", config);
-    info!("DEX: {:?}", args.dex);
-    info!("Pair: {:?}", args.pair);
-    run_indexer(config, args.dex, args.pair).await?;
+    // info!("Starting indexer with config: {:?}", config);
+    // info!("DEX: {:?}", args.dex);
+    // info!("Pair: {:?}", args.pair);
+    //run_indexer(config, args.dex, args.pair).await?;
+    run_indexer(config, Some("uniswap_v3".to_string()), args.pair).await?;
 
     Ok(())
 } 
