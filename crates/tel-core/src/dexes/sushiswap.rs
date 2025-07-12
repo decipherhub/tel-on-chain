@@ -1,6 +1,6 @@
 use crate::dexes::DexProtocol;
 use crate::error::Error;
-use crate::models::{LiquidityDistribution, Pool, PriceLiquidity, Token};
+use crate::models::{LiquidityDistribution, Pool, PriceLiquidity, Side, Token};
 use crate::providers::EthereumProvider;
 use alloy_primitives::Address;
 use async_trait::async_trait;
@@ -115,7 +115,9 @@ impl DexProtocol for Sushiswap {
         let token1_liquidity = 1000.0;
 
         let price_level = PriceLiquidity {
-            price,
+            side: Side::Buy, // TODO
+            lower_price: price,
+            upper_price: price,
             token0_liquidity,
             token1_liquidity,
             timestamp: Utc::now(),
@@ -124,6 +126,7 @@ impl DexProtocol for Sushiswap {
         Ok(LiquidityDistribution {
             token0: token0.clone(),
             token1: token1.clone(),
+            current_price: price,
             dex: self.name().to_string(),
             chain_id: self.chain_id(),
             price_levels: vec![price_level],

@@ -383,6 +383,7 @@ impl TelOnChainUI {
                                 decimals: 0,
                                 chain_id: 0,
                             },
+                            current_price: 0.0,
                             dex: String::new(),
                             chain_id: 0,
                             price_levels: vec![],
@@ -498,7 +499,7 @@ impl TelOnChainUI {
                 ui.collapsing(format!("Price Level {}", i + 1), |ui| {
                     ui.horizontal(|ui| {
                         ui.label("Price:");
-                        ui.label(format!("{:?}", level.price));
+                        ui.label(format!("{:?}", level.lower_price));
                     });
                     ui.horizontal(|ui| {
                         ui.label("Token0 Liquidity:");

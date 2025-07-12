@@ -1,6 +1,6 @@
 use crate::dexes::DexProtocol;
 use crate::error::Error;
-use crate::models::{LiquidityDistribution, Pool, PriceLiquidity, Token};
+use crate::models::{LiquidityDistribution, Pool, PriceLiquidity, Side, Token};
 use crate::providers::EthereumProvider;
 use crate::storage::{
     get_pool_async, get_token_async, save_liquidity_distribution_async, save_pool_async,
@@ -123,6 +123,42 @@ impl UniswapV2 {
         let reserve0 = reserve0.to::<u128>();
         let reserve1 = reserve1.to::<u128>();
         Ok((reserve0, reserve1, last_updated_timestamp))
+    }
+
+    fn build_cumulative_price_levels(
+        reserves: (u128, u128),
+    ) -> Vec<PriceLiquidity> {
+        let current_price = reserves.1 as f64 / reserves.0 as f64;
+    
+        (-50..=100)
+            .map(|i| {
+                let factor   = 1.0 + i as f64 / 100.0;
+                let sqrt_f   = factor.sqrt();
+    
+                // price up (f > 1) : token0 is sold and removed from pool
+                // price down (f < 1) : token1 is sold and removed from pool
+                let (liq0, liq1) = if factor >= 1.0 {
+                    (
+                        reserves.0 as f64 * (1.0 - 1.0 / sqrt_f),
+                        0.0,
+                    )
+                } else {
+                    (
+                        0.0,
+                        reserves.1 as f64 * (1.0 - sqrt_f),
+                    )
+                };
+    
+                PriceLiquidity {
+                    side: if factor >= 1.0 { Side::Sell } else { Side::Buy },
+                    lower_price: current_price * factor,
+                    upper_price: current_price * factor,
+                    token0_liquidity: liq0,
+                    token1_liquidity: liq1,
+                    timestamp: Utc::now(),
+                }
+            })
+            .collect()
     }
 }
 
@@ -321,29 +357,36 @@ impl DexProtocol for UniswapV2 {
         let reserve1_float = reserve1 as f64 / 10f64.powi(token1.decimals as i32);
 
         // Calculate price (token1/token0)
-        let price = if reserve0_float > 0.0 {
+        let current_price = if reserve0_float > 0.0 {
             reserve1_float / reserve0_float
         } else {
             0.0
         };
 
-        // For Uniswap V2, there's just one price point (the current price)
-        let price_level = PriceLiquidity {
-            price,
-            token0_liquidity: reserve0_float,
-            token1_liquidity: reserve1_float,
-            timestamp: Utc::now(),
-        };
+        let price_levels = Self::build_cumulative_price_levels((reserve0, reserve1));
+        let per_tick_levels: Vec<PriceLiquidity> = price_levels
+            .windows(2)
+            .map(|w| PriceLiquidity {
+                side: w[0].side,
+                lower_price: w[0].upper_price,
+                upper_price: w[1].upper_price,
+                token0_liquidity:  (w[1].token0_liquidity - w[0].token0_liquidity).abs(),
+                token1_liquidity:  (w[1].token1_liquidity - w[0].token1_liquidity).abs(),
+                timestamp:         Utc::now(),
+            })
+            .collect();
+
         let distribution = LiquidityDistribution {
+            current_price: current_price,
             token0: token0.clone(),
             token1: token1.clone(),
             dex: self.name().to_string(),
             chain_id: self.chain_id(),
-            price_levels: vec![price_level],
+            price_levels: per_tick_levels,
             timestamp: Utc::now(),
         };
         save_liquidity_distribution_async(self.storage.clone(), distribution.clone()).await?;
-
+        
         Ok(distribution)
     }
 
