@@ -1,7 +1,7 @@
 # tel-on-chain Default Configuration
 
 [ethereum]
-url = "https://ethereum-mainnet.core.chainstack.com/d7cd940855f32265a206952007359a0f"
+url = "https://eth.llamarpc.com"
 timeout_secs = 30
 
 [database]
