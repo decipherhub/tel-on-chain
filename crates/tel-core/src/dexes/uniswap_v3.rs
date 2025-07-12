@@ -1,6 +1,6 @@
 use crate::dexes::DexProtocol;
 use crate::error::Error;
-use crate::models::{LiquidityDistribution, LiquidityTick, Pool, PriceLiquidity, Token};
+use crate::models::{LiquidityDistribution, Pool, PriceLiquidity};
 use crate::providers::EthereumProvider;
 use alloy_primitives::{Address, B256, U256, U64};
 use crate::storage::{

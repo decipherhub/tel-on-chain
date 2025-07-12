@@ -11,9 +11,6 @@ use alloy_sol_types::sol;
 use async_trait::async_trait;
 use chrono::Utc;
 use std::sync::Arc;
-use tokio::try_join;
-use tracing::{debug, error, info, warn};
-use IUniswapV2Pair::getReservesReturn;
 
 sol! {
     // ── Uniswap V2 Factory ───────────────────────────────────────────
