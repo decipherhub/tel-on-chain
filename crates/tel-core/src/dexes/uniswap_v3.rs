@@ -181,22 +181,22 @@ impl DexProtocol for UniswapV3 {
         let mut i = 0;
         while from_block < latest_block && i < 10{
             let to_block = (from_block + 9999).min(latest_block);
-            info!("Fetching logs from block {} to {}", from_block, to_block);
+            //info!("Fetching logs from block {} to {}", from_block, to_block);
             let filter = self.build_pool_created_filter(from_block, to_block);
             let logs = self.get_logs(filter).await?;
-            info!("Found {} logs in this range", logs.len());
+            //info!("Found {} logs in this range", logs.len());
             all_logs.extend(logs);
             from_block = to_block + 1;
             i += 1;
         }
 
-        info!("Found a total of {} pools", all_logs.len());
+        //info!("Found a total of {} pools", all_logs.len());
 
         let mut pools = Vec::with_capacity(all_logs.len());
         let mut pools_count = 0;
         for log in &all_logs {
             if pools_count >= 10 { break; }
-            info!("Processing log: topics={:?}, data={:?}", log.topics(), log.data());
+            //info!("Processing log: topics={:?}, data={:?}", log.topics(), log.data());
             // topics: [topic0, token0, token1, fee]
             if log.topics().len() < 4 { continue; }
             let token0 = Address::from_slice(&log.topics()[1].as_slice()[12..]);

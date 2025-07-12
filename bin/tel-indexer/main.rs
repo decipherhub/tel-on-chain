@@ -39,11 +39,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = config::load_config(&args.config)?;
 
     // Run indexer
-    // info!("Starting indexer with config: {:?}", config);
-    // info!("DEX: {:?}", args.dex);
-    // info!("Pair: {:?}", args.pair);
-    //run_indexer(config, args.dex, args.pair).await?;
-    run_indexer(config, Some("uniswap_v3".to_string()), args.pair).await?;
+    run_indexer(config, args.dex, args.pair).await?;
 
     Ok(())
 } 
