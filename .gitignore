@@ -24,3 +24,5 @@ Thumbs.db
 # Debug logs
 *.log
 .vs
+
+.env

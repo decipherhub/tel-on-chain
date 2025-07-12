@@ -1,5 +1,5 @@
 use anyhow::Result;
-use config::{Config as ConfigLib, File};
+use config::{Config as ConfigLib, Environment, File};
 use serde::Deserialize;
 use std::path::Path;
 
@@ -47,11 +47,19 @@ pub struct Config {
 }
 
 pub fn load_config<P: AsRef<Path>>(path: P) -> Result<Config> {
+    // Load .env file if it exists
+    dotenvy::dotenv().ok();
+    
     let config = ConfigLib::builder()
         .add_source(File::from(path.as_ref()))
+        .add_source(Environment::with_prefix("TEL").separator("_"))
         .build()?;
 
-    Ok(config.try_deserialize()?)
+    let parsed_config: Config = config.try_deserialize()?;
+    
+    println!("DEBUG: Ethereum URL being used: {}", parsed_config.ethereum.url);
+    
+    Ok(parsed_config)
 }
 
 /// Creates a default config file if it doesn't exist
