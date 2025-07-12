@@ -1,3 +1,9 @@
+use tel_core::config::Config;
+use tel_core::error::Error;
+use tel_core::models::{LiquidityDistribution, LiquidityWallsResponse, LiquidityWall, Side, Token};
+use tel_core::providers::ProviderManager;
+use tel_core::storage::Storage;
+use tel_core::storage::SqliteStorage;
 use alloy_primitives::Address;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -7,15 +13,8 @@ use axum::Router;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tel_core::config::Config;
-use tel_core::core::liquidity::identify_walls;
-use tel_core::error::Error;
-use tel_core::models::{LiquidityWallsResponse, Token};
-use tel_core::providers::ProviderManager;
-use tel_core::storage::SqliteStorage;
-use tel_core::storage::Storage;
-use tower_http::cors::{Any, CorsLayer};
-use tracing::{debug, info, warn};
+use tracing::{info, warn, debug, error};
+use std::collections::HashMap;
 
 /// Query parameters for liquidity walls endpoint
 #[derive(Debug, Deserialize)]
@@ -129,8 +128,8 @@ async fn get_liquidity_walls(
 
     // Get liquidity distributions from database
     let dex_filter = params.dex.as_deref();
-    let mut all_distributions = Vec::new();
-
+    let mut all_distributions: Vec<LiquidityDistribution> = Vec::new();
+    
     // Define supported DEXes
     let dexes = if let Some(dex) = dex_filter {
         vec![dex.to_string()]
@@ -144,7 +143,7 @@ async fn get_liquidity_walls(
         ]
     };
 
-    // Collect liquidity distributions from all relevant DEXes
+    // TODO: Collect and merge liquidity distributions from all relevant DEXes
     for dex in dexes {
         match state.storage.get_liquidity_distribution(
             token0_address,
@@ -153,41 +152,53 @@ async fn get_liquidity_walls(
             chain_id,
         ) {
             Ok(Some(distribution)) => {
-                debug!("Found liquidity distribution for {} DEX", dex);
+                info!("Found liquidity distribution for {} DEX", dex);
                 all_distributions.push(distribution);
             }
             Ok(None) => {
-                debug!("No liquidity distribution found for {} DEX", dex);
+                info!("No liquidity distribution found for {} DEX", dex);
             }
             Err(e) => {
-                warn!("Error getting liquidity distribution for {}: {}", dex, e);
+                error!("Error getting liquidity distribution for {}: {}", dex, e);
             }
         }
     }
 
-    // Calculate current price (use average from distributions or fallback)
-    let current_price = if !all_distributions.is_empty() {
-        all_distributions
-            .iter()
-            .filter_map(|d| d.price_levels.last())
-            .map(|pl| pl.price)
-            .sum::<f64>()
-            / all_distributions.len() as f64
-    } else {
-        // Fallback price calculation or default
-        1625.75
-    };
+    if all_distributions.is_empty() {
+        return Err(ApiError {
+            message: "No liquidity distributions found".to_string(),
+            code: 404,
+        });
+    }
 
-    // Convert distributions to liquidity walls
-    let (buy_walls, sell_walls) = if !all_distributions.is_empty() {
-        // Define price ranges for wall identification
-        let price_ranges = generate_price_ranges(current_price, 10);
-        identify_walls(&all_distributions, &price_ranges)
-    } else {
-        // Return empty walls if no data found
-        warn!("No liquidity distributions found, returning empty walls");
-        (Vec::new(), Vec::new())
-    };
+    debug!("distributions: {:#?}", all_distributions);
+
+    let distribution = all_distributions.first().unwrap();
+
+    let current_price = distribution.current_price;
+
+    let buy_walls = distribution
+        .price_levels
+        .iter()
+        .filter(|d| d.side == Side::Buy)
+        .map(|d| LiquidityWall {
+            price_lower: d.lower_price,
+            price_upper: d.upper_price,
+            liquidity_value: d.token1_liquidity,
+            dex_sources: HashMap::new(),
+        })
+        .collect();
+    let sell_walls = distribution
+        .price_levels
+        .iter()
+        .filter(|d| d.side == Side::Sell)
+        .map(|d| LiquidityWall {
+            price_lower: d.lower_price,
+            price_upper: d.upper_price,
+            liquidity_value: d.token0_liquidity * (d.upper_price + d.lower_price) / 2.0, // displayed in token1 value
+            dex_sources: HashMap::new(),
+        })
+        .collect();
 
     let response = LiquidityWallsResponse {
         token0,
@@ -199,28 +210,6 @@ async fn get_liquidity_walls(
     };
 
     Ok(Json(response))
-}
-
-/// Generate price ranges around current price for wall identification
-fn generate_price_ranges(current_price: f64, num_ranges: usize) -> Vec<(f64, f64)> {
-    let mut ranges = Vec::new();
-    let step_size = current_price * 0.05; // 5% steps
-
-    for i in 0..num_ranges {
-        let offset = (i as f64 + 1.0) * step_size;
-
-        // Buy walls below current price
-        let buy_lower = current_price - offset - step_size;
-        let buy_upper = current_price - offset;
-        ranges.push((buy_lower, buy_upper));
-
-        // Sell walls above current price
-        let sell_lower = current_price + offset;
-        let sell_upper = current_price + offset + step_size;
-        ranges.push((sell_lower, sell_upper));
-    }
-
-    ranges
 }
 
 /// Get token information

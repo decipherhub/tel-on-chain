@@ -40,10 +40,18 @@ pub struct LiquidityTick {
     pub timestamp: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Side {
+    Buy,
+    Sell,
+}
+
 /// Represents aggregated liquidity at a specific price level
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PriceLiquidity {
-    pub price: f64,
+    pub side: Side,
+    pub lower_price: f64,
+    pub upper_price: f64,
     pub token0_liquidity: f64,
     pub token1_liquidity: f64,
     pub timestamp: DateTime<Utc>,
@@ -63,6 +71,7 @@ pub struct V3PriceLiquidity {
 pub struct LiquidityDistribution {
     pub token0: Token,
     pub token1: Token,
+    pub current_price: f64,
     pub dex: String,
     pub chain_id: u64,
     pub price_levels: Vec<PriceLiquidity>,
