@@ -1,5 +1,5 @@
 use clap::Parser;
-use tel_core::config;
+use tel_core::{config, dexes::uniswap_v3};
 use tel_indexer::run_indexer;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;

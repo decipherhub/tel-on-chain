@@ -87,6 +87,7 @@ pub fn get_dex_by_name(
         "uniswap_v3" => Some(Box::new(uniswap_v3::UniswapV3::new(
             provider,
             factory_address,
+            storage.clone(),
         ))),
         "sushiswap" => Some(Box::new(sushiswap::Sushiswap::new(
             provider,

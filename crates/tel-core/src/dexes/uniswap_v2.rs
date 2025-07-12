@@ -63,7 +63,6 @@ impl UniswapV2 {
             return Ok(tok);
         }
 
-        // (여기서부터) DB에 없을 때만 on-chain에서 메타데이터 조회 및 저장
         let erc20 = IERC20Metadata::new(addr, self.provider.provider());
         let symbol = erc20
             .symbol()
@@ -89,7 +88,6 @@ impl UniswapV2 {
             chain_id: self.chain_id(),
         };
 
-        // 3) DB에 저장
         save_token_async(self.storage.clone(), token.clone()).await?;
         Ok(token)
     }
