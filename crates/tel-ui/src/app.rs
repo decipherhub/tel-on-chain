@@ -70,7 +70,7 @@ struct DbPool {
     chain_id: u64,
     token0: String,
     token1: String,
-    fee: u64, // 0.0001%의 몇 배인지
+    fee: u64, // How many times of 0.0001%
 }
 
 #[derive(Debug, Clone)]
@@ -88,7 +88,7 @@ struct DbLiquidityDistribution {
     token1_address: String,
     timestamp: i64,
     price_points: usize,
-    distribution: Option<DistributionKind>, // JSON 전체
+    distribution: Option<DistributionKind>, // Entire JSON
 }
 
 pub struct TelOnChainUI {
@@ -116,8 +116,8 @@ pub struct TelOnChainUI {
     db_query_status: String,
 
     // Pool-Info tab state
-    pool_info_loaded: bool,           // 첫 로드 여부
-    selected_pool_idx: Option<usize>, // 선택된 풀 인덱스
+    pool_info_loaded: bool,           // First load or not
+    selected_pool_idx: Option<usize>, // Selected pool index
 
     // UI tabs
     selected_tab: Tab,

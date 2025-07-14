@@ -11,7 +11,7 @@ use crate::providers::EthereumProvider;
 use crate::storage::Storage;
 use alloy_primitives::Address;
 use async_trait::async_trait;
-use std::sync::Arc; // 이미 있다면 중복 제거
+use std::sync::Arc; // Remove if already present to avoid duplication
 
 /// Common interface for all DEX implementations
 #[async_trait]
@@ -58,6 +58,10 @@ pub trait DexProtocol: Send + Sync {
         &self,
         pool_address: Address,
     ) -> Result<V3LiquidityDistribution, Error> {
+        Err(Error::DexError("Not implemented for this DEX".to_string()))
+    }
+
+    async fn get_all_pools_test(&self) -> Result<Vec<Pool>, Error> {
         Err(Error::DexError("Not implemented for this DEX".to_string()))
     }
 }

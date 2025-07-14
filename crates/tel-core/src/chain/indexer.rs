@@ -387,7 +387,7 @@ pub async fn run_indexer(
             info!("Indexed pool: {} on {}", pool.address, pool.dex);
 
             if dex == "uniswap_v3" {
-                // V3 분기: V3LiquidityDistribution 저장
+                // V3 section: save V3LiquidityDistribution
                 let dex_impl = indexer.dexes.get(&dex).unwrap();
                 let v3_dist = dex_impl
                     .as_any()
@@ -406,7 +406,7 @@ pub async fn run_indexer(
                     &v3_dist,
                 )?;
             } else {
-                // 기존 V2 방식
+                // Existing V2 method
                 match indexer
                     .get_liquidity_distribution(&dex, &pool_address)
                     .await

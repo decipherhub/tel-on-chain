@@ -222,13 +222,13 @@ impl Storage for SqliteStorage {
     fn save_pool(&self, pool: &Pool) -> std::result::Result<(), Error> {
         use rusqlite::{params, TransactionBehavior};
 
-        // ① 한 번만 연결 잠그고 트랜잭션 시작
-        let mut conn = self.conn.lock().unwrap(); // ← mut 추가
+        // ① Only connect once, then start transaction
+        let mut conn = self.conn.lock().unwrap(); // ← add mut
         let tx = conn
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|e| Error::DatabaseError(format!("tx start: {e}")))?;
 
-        // ② 토큰 2개 먼저 INSERT OR REPLACE
+        // ② Insert or replace two tokens first
         for t in &pool.tokens {
             tx.execute(
                 "INSERT OR REPLACE INTO tokens
@@ -245,7 +245,7 @@ impl Storage for SqliteStorage {
             .map_err(|e| Error::DatabaseError(format!("save_token: {e}")))?;
         }
 
-        // ③ 풀 INSERT
+        // ③ Pool INSERT
         tx.execute(
             "INSERT OR REPLACE INTO pools
          (address, chain_id, dex, token0_address, token1_address, fee)
@@ -256,12 +256,12 @@ impl Storage for SqliteStorage {
                 &pool.dex,
                 pool.tokens[0].address.to_string(),
                 pool.tokens[1].address.to_string(),
-                pool.fee as u32 // 실제 pool의 fee 값 저장
+                pool.fee as u32 // Save the actual pool's fee value
             ],
         )
         .map_err(|e| Error::DatabaseError(format!("save_pool: {e}")))?;
 
-        // ④ 커밋
+        // ④ Commit
         tx.commit()
             .map_err(|e| Error::DatabaseError(format!("commit: {e}")))?;
 
@@ -297,7 +297,7 @@ impl Storage for SqliteStorage {
                 Err(e) => return Err(Error::DatabaseError(format!("query_row get_pool: {e}"))),
             };
 
-        // 3. token0, token1 정보 읽기
+        // 3. Read token0, token1 info
         let mut token_stmt = conn
             .prepare(
                 "SELECT address, chain_id, name, symbol, decimals
@@ -332,7 +332,7 @@ impl Storage for SqliteStorage {
             })
             .map_err(|e| Error::DatabaseError(format!("query_row token1: {e}")))?;
 
-        // chrono::DateTime<Utc> 기본값 (1970-01-01T00:00:00Z)
+        // chrono::DateTime<Utc> default value (1970-01-01T00:00:00Z)
         let default_dt = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc);
 
         Ok(Some(Pool {

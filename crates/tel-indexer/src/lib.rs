@@ -75,7 +75,7 @@ impl Indexer {
     ///
     /// # Returns
     /// Returns `Ok(())` if the loop is externally stopped; otherwise, runs indefinitely.
-    pub async fn start(&self) -> Result<(), Error> {
+    pub async fn start(&self, test_mode: bool) -> Result<(), Error> {
         info!("Starting indexer...");
         let interval = Duration::from_secs(self.config.indexer.interval_secs);
         let mut interval_timer = time::interval(interval);
@@ -89,7 +89,13 @@ impl Indexer {
                 info!("Processing DEX: {}", dex_name);
 
                 // Get pools for this DEX
-                match dex.get_all_pools().await {
+                let pools_result = if test_mode && dex_name == "uniswap_v3" {
+                    dex.get_all_pools_test().await
+                } else {
+                    dex.get_all_pools().await
+                };
+
+                match pools_result {
                     Ok(pools) => {
                         info!("Found {} pools for {}", pools.len(), dex_name);
                         for pool in pools {
@@ -248,6 +254,7 @@ pub async fn run_indexer(
     config: Config,
     dex: Option<String>,
     pair: Option<String>,
+    test_mode: bool,
 ) -> Result<(), Error> {
     // Initialize the database connection
     let storage = Arc::new(SqliteStorage::new(&config.database.url)?);
@@ -299,7 +306,7 @@ pub async fn run_indexer(
         }
         _ => {
             info!("Indexer running in continuous mode");
-            indexer.start().await?;
+            indexer.start(test_mode).await?;
         }
     }
 

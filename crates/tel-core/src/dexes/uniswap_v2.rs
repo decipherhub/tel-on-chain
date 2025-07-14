@@ -226,7 +226,7 @@ impl DexProtocol for UniswapV2 {
         // 2. Uniswap-V2 Factory
         let factory = IUniswapV2Factory::new(self.factory_address, inner.clone());
 
-        // 3. 총 pair 수 (데모: 최대 10 개)
+        // 3. Total pair count (demo: max 10)
         let total: U256 = factory
             .allPairsLength()
             .call()
@@ -236,19 +236,19 @@ impl DexProtocol for UniswapV2 {
         let limit = std::cmp::min(total.to::<u64>(), 10) as usize;
         let mut pools = Vec::with_capacity(limit);
 
-        // 4. 0 … limit-1 루프
+        // 4. Loop 0 … limit-1
         for i in 0..limit {
-            // 4-a. pair 주소
+            // 4-a. pair address
             let pair_addr: Address = factory
                 .allPairs(U256::from(i))
                 .call()
                 .await
                 .map_err(|e| Error::ProviderError(format!("allPairs({i}): {e}")))?;
 
-            // 4-b. pair 컨트랙트
+            // 4-b. pair contract
             let pair = IUniswapV2Pair::new(pair_addr, inner.clone());
 
-            // 4-c. token0 / token1 주소 ── 순차 호출 (수명 문제 無)
+            // 4-c. token0 / token1 address -- sequential call (no naming issue)
             let t0_addr = pair
                 .token0()
                 .call()
@@ -261,7 +261,7 @@ impl DexProtocol for UniswapV2 {
                 .await
                 .map_err(|e| Error::ProviderError(format!("token1(): {e}")))?;
 
-            // 4-d. 실제 메타데이터 토큰 fetch
+            // 4-d. Fetch actual token metadata
 
             let token0 = self.fetch_or_load_token(t0_addr).await?;
             let token1 = self.fetch_or_load_token(t1_addr).await?;
@@ -275,10 +275,10 @@ impl DexProtocol for UniswapV2 {
                 creation_timestamp: Utc::now(),
                 last_updated_block: 0,
                 last_updated_timestamp: Utc::now(),
-                fee: 3000, // 0.3% = 3000 (UniswapV2 표준)
+                fee: 3000, // 0.3% = 3000 (UniswapV2 standard)
             };
 
-            // 4-e. DB 저장
+            // 4-e. Save to DB
             save_pool_async(self.storage.clone(), pool.clone()).await?;
             pools.push(pool);
         }
