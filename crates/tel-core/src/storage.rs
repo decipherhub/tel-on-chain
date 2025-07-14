@@ -1,4 +1,5 @@
 use crate::error::Error;
+use crate::models::V3LiquidityDistribution;
 use crate::models::{LiquidityDistribution, Pool, Token};
 use crate::Result;
 use alloy_primitives::Address;
@@ -34,6 +35,14 @@ pub trait Storage: Send + Sync {
         dex: &str,
         chain_id: u64,
     ) -> Result<Option<LiquidityDistribution>>;
+    fn save_v3_liquidity_distribution(
+        &self,
+        _distribution: &V3LiquidityDistribution,
+    ) -> Result<()> {
+        Err(Error::DatabaseError(
+            "Not implemented for this storage backend".to_string(),
+        ))
+    }
 }
 
 pub struct SqliteStorage {
@@ -91,6 +100,63 @@ impl SqliteStorage {
         )?;
 
         Ok(())
+    }
+
+    pub fn save_v3_liquidity_distribution(
+        &self,
+        distribution: &V3LiquidityDistribution,
+    ) -> Result<()> {
+        use rusqlite::{params, TransactionBehavior};
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let data = serde_json::to_string(&distribution)
+            .map_err(|e| Error::DatabaseError(format!("serialize distribution: {e}")))?;
+        tx.execute(
+            "INSERT OR REPLACE INTO liquidity_distributions
+            (token0_address, token1_address, dex, chain_id, data, timestamp)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                distribution.token0.address.to_string(),
+                distribution.token1.address.to_string(),
+                distribution.dex,
+                distribution.chain_id,
+                data,
+                distribution.timestamp.timestamp()
+            ],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn get_v3_liquidity_distribution(
+        &self,
+        token0: Address,
+        token1: Address,
+        dex: &str,
+        chain_id: u64,
+    ) -> Result<Option<V3LiquidityDistribution>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT data FROM liquidity_distributions \
+             WHERE token0_address = ?1 AND token1_address = ?2 AND dex = ?3 AND chain_id = ?4\
+             ORDER BY timestamp DESC LIMIT 1",
+        )?;
+        let distribution_opt = stmt.query_row(
+            params![token0.to_string(), token1.to_string(), dex, chain_id],
+            |row| {
+                let data: String = row.get(0)?;
+                let distribution: V3LiquidityDistribution = serde_json::from_str(&data)
+                    .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+                Ok(Some(distribution))
+            },
+        );
+        match distribution_opt {
+            Ok(distribution) => Ok(distribution),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(Error::DatabaseError(format!(
+                "get_v3_liquidity_distribution error: {e}"
+            ))),
+        }
     }
 }
 
@@ -156,13 +222,13 @@ impl Storage for SqliteStorage {
     fn save_pool(&self, pool: &Pool) -> std::result::Result<(), Error> {
         use rusqlite::{params, TransactionBehavior};
 
-        // ① 한 번만 연결 잠그고 트랜잭션 시작
-        let mut conn = self.conn.lock().unwrap(); // ← mut 추가
+        // ① Only connect once, then start transaction
+        let mut conn = self.conn.lock().unwrap(); // ← add mut
         let tx = conn
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|e| Error::DatabaseError(format!("tx start: {e}")))?;
 
-        // ② 토큰 2개 먼저 INSERT OR REPLACE
+        // ② Insert or replace two tokens first
         for t in &pool.tokens {
             tx.execute(
                 "INSERT OR REPLACE INTO tokens
@@ -179,7 +245,7 @@ impl Storage for SqliteStorage {
             .map_err(|e| Error::DatabaseError(format!("save_token: {e}")))?;
         }
 
-        // ③ 풀 INSERT
+        // ③ Pool INSERT
         tx.execute(
             "INSERT OR REPLACE INTO pools
          (address, chain_id, dex, token0_address, token1_address, fee)
@@ -190,12 +256,12 @@ impl Storage for SqliteStorage {
                 &pool.dex,
                 pool.tokens[0].address.to_string(),
                 pool.tokens[1].address.to_string(),
-                pool.fee as u32 // 실제 pool의 fee 값 저장
+                pool.fee as u32 // Save the actual pool's fee value
             ],
         )
         .map_err(|e| Error::DatabaseError(format!("save_pool: {e}")))?;
 
-        // ④ 커밋
+        // ④ Commit
         tx.commit()
             .map_err(|e| Error::DatabaseError(format!("commit: {e}")))?;
 
@@ -231,7 +297,7 @@ impl Storage for SqliteStorage {
                 Err(e) => return Err(Error::DatabaseError(format!("query_row get_pool: {e}"))),
             };
 
-        // 3. token0, token1 정보 읽기
+        // 3. Read token0, token1 info
         let mut token_stmt = conn
             .prepare(
                 "SELECT address, chain_id, name, symbol, decimals
@@ -266,7 +332,7 @@ impl Storage for SqliteStorage {
             })
             .map_err(|e| Error::DatabaseError(format!("query_row token1: {e}")))?;
 
-        // chrono::DateTime<Utc> 기본값 (1970-01-01T00:00:00Z)
+        // chrono::DateTime<Utc> default value (1970-01-01T00:00:00Z)
         let default_dt = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc);
 
         Ok(Some(Pool {
@@ -491,6 +557,10 @@ impl Storage for SqliteStorage {
                 "get_liquidity_distribution error: {e}"
             ))),
         }
+    }
+
+    fn save_v3_liquidity_distribution(&self, distribution: &V3LiquidityDistribution) -> Result<()> {
+        self.save_v3_liquidity_distribution(distribution)
     }
 }
 

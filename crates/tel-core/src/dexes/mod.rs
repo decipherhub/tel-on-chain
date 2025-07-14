@@ -6,12 +6,12 @@ pub mod uniswap_v3;
 pub mod utils;
 
 use crate::error::Error;
-use crate::models::{LiquidityDistribution, Pool, Token};
+use crate::models::{LiquidityDistribution, Pool, Token, V3LiquidityDistribution};
 use crate::providers::EthereumProvider;
 use crate::storage::Storage;
 use alloy_primitives::Address;
 use async_trait::async_trait;
-use std::sync::Arc; // 이미 있다면 중복 제거
+use std::sync::Arc; // Remove if already present to avoid duplication
 
 /// Common interface for all DEX implementations
 #[async_trait]
@@ -53,6 +53,17 @@ pub trait DexProtocol: Send + Sync {
         token_in: Address,
         amount_in: f64,
     ) -> Result<f64, Error>;
+
+    async fn get_v3_liquidity_distribution(
+        &self,
+        pool_address: Address,
+    ) -> Result<V3LiquidityDistribution, Error> {
+        Err(Error::DexError("Not implemented for this DEX".to_string()))
+    }
+
+    async fn get_all_pools_test(&self) -> Result<Vec<Pool>, Error> {
+        Err(Error::DexError("Not implemented for this DEX".to_string()))
+    }
 }
 
 /// Returns an instance of a DEX protocol implementation matching the given name.

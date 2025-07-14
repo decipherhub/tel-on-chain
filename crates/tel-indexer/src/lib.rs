@@ -7,7 +7,7 @@ use std::time::Duration;
 use tel_core::config::Config;
 use tel_core::dexes::{get_dex_by_name, DexProtocol};
 use tel_core::error::Error;
-use tel_core::models::{LiquidityDistribution, Pool, Token};
+use tel_core::models::{LiquidityDistribution, Pool, Token, V3LiquidityDistribution};
 use tel_core::providers::ProviderManager;
 use tel_core::storage;
 use tel_core::storage::SqliteStorage;
@@ -75,7 +75,7 @@ impl Indexer {
     ///
     /// # Returns
     /// Returns `Ok(())` if the loop is externally stopped; otherwise, runs indefinitely.
-    pub async fn start(&self) -> Result<(), Error> {
+    pub async fn start(&self, test_mode: bool) -> Result<(), Error> {
         info!("Starting indexer...");
         let interval = Duration::from_secs(self.config.indexer.interval_secs);
         let mut interval_timer = time::interval(interval);
@@ -89,7 +89,13 @@ impl Indexer {
                 info!("Processing DEX: {}", dex_name);
 
                 // Get pools for this DEX
-                match dex.get_all_pools().await {
+                let pools_result = if test_mode && dex_name == "uniswap_v3" {
+                    dex.get_all_pools_test().await
+                } else {
+                    dex.get_all_pools().await
+                };
+
+                match pools_result {
                     Ok(pools) => {
                         info!("Found {} pools for {}", pools.len(), dex_name);
                         for pool in pools {
@@ -118,16 +124,18 @@ impl Indexer {
     ///
     /// Returns an error if the DEX is unknown, if retrieving the liquidity distribution fails, or if saving to storage fails.
     async fn process_pool(&self, pool: &Pool) -> Result<(), Error> {
-        // Get DEX implementation
         let dex = self
             .dexes
             .get(&pool.dex)
             .ok_or_else(|| Error::UnknownDEX(pool.dex.clone()))?;
 
-        // Get and store liquidity distribution
-        let distribution = dex.get_liquidity_distribution(pool.address).await?;
-        storage::save_liquidity_distribution_async(self.storage.clone(), distribution).await?;
-
+        if pool.dex == "uniswap_v3" {
+            let v3_dist = dex.get_v3_liquidity_distribution(pool.address).await?;
+            self.storage.save_v3_liquidity_distribution(&v3_dist)?;
+        } else {
+            let distribution = dex.get_liquidity_distribution(pool.address).await?;
+            storage::save_liquidity_distribution_async(self.storage.clone(), distribution).await?;
+        }
         Ok(())
     }
 
@@ -246,6 +254,7 @@ pub async fn run_indexer(
     config: Config,
     dex: Option<String>,
     pair: Option<String>,
+    test_mode: bool,
 ) -> Result<(), Error> {
     // Initialize the database connection
     let storage = Arc::new(SqliteStorage::new(&config.database.url)?);
@@ -254,50 +263,50 @@ pub async fn run_indexer(
     match (dex, pair) {
         (Some(dex_name), Some(pool_address)) => {
             info!("Indexer running in single pool mode");
-
-            // Validate DEX exists
             if !indexer.dexes.contains_key(&dex_name) {
                 return Err(Error::UnknownDEX(dex_name));
             }
-
-            // Find the chain ID for this DEX
             let chain_id = indexer
                 .dexes
                 .get(&dex_name)
                 .map(|dex| dex.chain_id())
-                .unwrap_or(1); // Default to Ethereum mainnet
-
+                .unwrap_or(1);
             let pool = indexer
                 .index_pool(&dex_name, &pool_address, chain_id)
                 .await?;
             info!("Indexed pool: {} on {}", pool.address, pool.dex);
-
-            match indexer
-                .get_liquidity_distribution(&dex_name, &pool_address)
-                .await
-            {
-                Ok(distribution) => {
-                    info!(
-                        "Got liquidity distribution for pool {} on {}",
-                        pool_address, dex_name
-                    );
-                    storage::save_liquidity_distribution_async(
-                        indexer.storage.clone(),
-                        distribution,
-                    )
-                    .await?;
-                }
-                Err(e) => {
-                    error!(
-                        "Failed to get liquidity distribution for pool {} on {}: {}",
-                        pool_address, dex_name, e
-                    );
+            if dex_name == "uniswap_v3" {
+                let dex = indexer.dexes.get(&dex_name).unwrap();
+                let v3_dist = dex.get_v3_liquidity_distribution(pool.address).await?;
+                indexer.storage.save_v3_liquidity_distribution(&v3_dist)?;
+            } else {
+                match indexer
+                    .get_liquidity_distribution(&dex_name, &pool_address)
+                    .await
+                {
+                    Ok(distribution) => {
+                        info!(
+                            "Got liquidity distribution for pool {} on {}",
+                            pool_address, dex_name
+                        );
+                        storage::save_liquidity_distribution_async(
+                            indexer.storage.clone(),
+                            distribution,
+                        )
+                        .await?;
+                    }
+                    Err(e) => {
+                        error!(
+                            "Failed to get liquidity distribution for pool {} on {}: {}",
+                            pool_address, dex_name, e
+                        );
+                    }
                 }
             }
         }
         _ => {
             info!("Indexer running in continuous mode");
-            indexer.start().await?;
+            indexer.start(test_mode).await?;
         }
     }
 

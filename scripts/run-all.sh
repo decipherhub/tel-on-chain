@@ -19,6 +19,13 @@ cleanup() {
 # Set up trap to cleanup on exit
 trap cleanup SIGINT SIGTERM
 
+# Check if test mode is enabled
+TEST_MODE=0
+if [[ "$1" == "test" ]]; then
+    TEST_MODE=1
+    echo -e "${YELLOW}Running in TEST MODE (indexer will use test pools)!${NC}"
+fi
+
 # Start tel-api
 echo -e "${BLUE}Starting tel-api...${NC}"
 cargo run --bin tel-api &
@@ -26,7 +33,11 @@ API_PID=$!
 
 # Start tel-indexer
 echo -e "${BLUE}Starting tel-indexer...${NC}"
-cargo run --bin tel-indexer &
+if [[ $TEST_MODE -eq 1 ]]; then
+    cargo run --bin tel-indexer -- --test-mode &
+else
+    cargo run --bin tel-indexer &
+fi
 INDEXER_PID=$!
 
 # Start tel-ui (Rust binary)

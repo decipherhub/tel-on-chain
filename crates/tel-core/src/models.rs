@@ -49,6 +49,15 @@ pub struct PriceLiquidity {
     pub timestamp: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct V3PriceLiquidity {
+    pub tick_idx: i32,
+    pub price: f64,
+    pub token0_liquidity: f64,
+    pub token1_liquidity: f64,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+}
+
 /// Represents a distribution of liquidity across price ranges
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LiquidityDistribution {
@@ -57,6 +66,17 @@ pub struct LiquidityDistribution {
     pub dex: String,
     pub chain_id: u64,
     pub price_levels: Vec<PriceLiquidity>,
+    pub timestamp: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct V3LiquidityDistribution {
+    pub token0: Token,
+    pub token1: Token,
+    pub dex: String,
+    pub chain_id: u64,
+    pub current_tick: i32,
+    pub price_levels: Vec<V3PriceLevel>,
     pub timestamp: DateTime<Utc>,
 }
 
@@ -119,4 +139,24 @@ pub struct LiquidityWall {
     pub price_upper: f64,
     pub liquidity_value: f64,
     pub dex_sources: HashMap<String, f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct V3PopulatedTick {
+    pub tick_idx: i32,
+    pub price: f64,
+    pub raw_price: f64,
+    pub liquidity_net: i128,
+    pub liquidity_gross: u128,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct V3PriceLevel {
+    pub tick_idx: i32,
+    pub price: f64,
+    pub tick_price: f64,
+    pub token0_liquidity: f64,
+    pub token1_liquidity: f64,
+    pub timestamp: DateTime<Utc>,
 }

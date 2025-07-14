@@ -15,10 +15,14 @@ pub struct Curve {
 }
 
 impl Curve {
-    pub fn new(factory_address: Address, provider_manager: Arc<ProviderManager>, chain_id: u64) -> Result<Self> {
-        let provider = provider_manager
-            .by_chain_id(chain_id)
-            .ok_or_else(|| Error::ProviderError(format!("No provider found for chain {}", chain_id)))?;
+    pub fn new(
+        factory_address: Address,
+        provider_manager: Arc<ProviderManager>,
+        chain_id: u64,
+    ) -> Result<Self> {
+        let provider = provider_manager.by_chain_id(chain_id).ok_or_else(|| {
+            Error::ProviderError(format!("No provider found for chain {}", chain_id))
+        })?;
 
         Ok(Self {
             factory_address,
