@@ -6,7 +6,7 @@ pub mod uniswap_v3;
 pub mod utils;
 
 use crate::error::Error;
-use crate::models::{LiquidityDistribution, Pool, Token};
+use crate::models::{LiquidityDistribution, Pool, Token, V3LiquidityDistribution};
 use crate::providers::EthereumProvider;
 use crate::storage::Storage;
 use alloy_primitives::Address;
@@ -53,6 +53,13 @@ pub trait DexProtocol: Send + Sync {
         token_in: Address,
         amount_in: f64,
     ) -> Result<f64, Error>;
+
+    async fn get_v3_liquidity_distribution(
+        &self,
+        pool_address: Address,
+    ) -> Result<V3LiquidityDistribution, Error> {
+        Err(Error::DexError("Not implemented for this DEX".to_string()))
+    }
 }
 
 /// Returns an instance of a DEX protocol implementation matching the given name.

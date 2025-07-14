@@ -1,4 +1,5 @@
 use crate::error::Error;
+use crate::models::V3LiquidityDistribution;
 use crate::models::{LiquidityDistribution, Pool, Token};
 use crate::Result;
 use alloy_primitives::Address;
@@ -34,6 +35,14 @@ pub trait Storage: Send + Sync {
         dex: &str,
         chain_id: u64,
     ) -> Result<Option<LiquidityDistribution>>;
+    fn save_v3_liquidity_distribution(
+        &self,
+        _distribution: &V3LiquidityDistribution,
+    ) -> Result<()> {
+        Err(Error::DatabaseError(
+            "Not implemented for this storage backend".to_string(),
+        ))
+    }
 }
 
 pub struct SqliteStorage {
@@ -91,6 +100,63 @@ impl SqliteStorage {
         )?;
 
         Ok(())
+    }
+
+    pub fn save_v3_liquidity_distribution(
+        &self,
+        distribution: &V3LiquidityDistribution,
+    ) -> Result<()> {
+        use rusqlite::{params, TransactionBehavior};
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let data = serde_json::to_string(&distribution)
+            .map_err(|e| Error::DatabaseError(format!("serialize distribution: {e}")))?;
+        tx.execute(
+            "INSERT OR REPLACE INTO liquidity_distributions
+            (token0_address, token1_address, dex, chain_id, data, timestamp)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                distribution.token0.address.to_string(),
+                distribution.token1.address.to_string(),
+                distribution.dex,
+                distribution.chain_id,
+                data,
+                distribution.timestamp.timestamp()
+            ],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn get_v3_liquidity_distribution(
+        &self,
+        token0: Address,
+        token1: Address,
+        dex: &str,
+        chain_id: u64,
+    ) -> Result<Option<V3LiquidityDistribution>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT data FROM liquidity_distributions \
+             WHERE token0_address = ?1 AND token1_address = ?2 AND dex = ?3 AND chain_id = ?4\
+             ORDER BY timestamp DESC LIMIT 1",
+        )?;
+        let distribution_opt = stmt.query_row(
+            params![token0.to_string(), token1.to_string(), dex, chain_id],
+            |row| {
+                let data: String = row.get(0)?;
+                let distribution: V3LiquidityDistribution = serde_json::from_str(&data)
+                    .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+                Ok(Some(distribution))
+            },
+        );
+        match distribution_opt {
+            Ok(distribution) => Ok(distribution),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(Error::DatabaseError(format!(
+                "get_v3_liquidity_distribution error: {e}"
+            ))),
+        }
     }
 }
 
@@ -491,6 +557,10 @@ impl Storage for SqliteStorage {
                 "get_liquidity_distribution error: {e}"
             ))),
         }
+    }
+
+    fn save_v3_liquidity_distribution(&self, distribution: &V3LiquidityDistribution) -> Result<()> {
+        self.save_v3_liquidity_distribution(distribution)
     }
 }
 

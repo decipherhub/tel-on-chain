@@ -17,7 +17,7 @@ const DEFAULT_DB_PATH: &str = "sqlite_tel_on_chain.db";
 // Type aliases from the main project to use with the API
 type Address = alloy_primitives::Address;
 
-use tel_core::models::LiquidityDistribution;
+use tel_core::models::{LiquidityDistribution, V3LiquidityDistribution, V3PriceLevel};
 
 #[derive(Debug, Clone, Deserialize)]
 struct Token {
@@ -46,7 +46,23 @@ struct LiquidityWallsResponse {
     timestamp: chrono::DateTime<chrono::Utc>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct V3PopulatedTick {
+    tick_idx: i32,
+    price: f64,
+    raw_price: f64,
+    liquidity_net: i128,
+    liquidity_gross: u128,
+    timestamp: chrono::DateTime<chrono::Utc>,
+}
+
 // Database query results
+#[derive(Debug, Clone)]
+enum DistributionKind {
+    V2(LiquidityDistribution),
+    V3(V3LiquidityDistribution),
+}
+
 #[derive(Debug, Clone)]
 struct DbPool {
     address: String,
@@ -72,7 +88,7 @@ struct DbLiquidityDistribution {
     token1_address: String,
     timestamp: i64,
     price_points: usize,
-    distribution: Option<LiquidityDistribution>, // JSON 전체
+    distribution: Option<DistributionKind>, // JSON 전체
 }
 
 pub struct TelOnChainUI {
@@ -108,6 +124,14 @@ pub struct TelOnChainUI {
 
     // DB Explorer tab state
     db_explorer_tab: DbExplorerTab,
+    selected_distribution_dex: String,
+    available_distribution_dexes: Vec<String>,
+    selected_pool_dex: String,
+    available_pool_dexes: Vec<String>,
+
+    // V3 populated ticks
+    v3_populated_ticks: Option<Vec<V3PopulatedTick>>,
+    v3_price_levels: Option<Vec<V3PriceLevel>>,
 }
 
 #[derive(PartialEq)]
@@ -163,6 +187,12 @@ impl TelOnChainUI {
             selected_pool_idx: None,
             selected_tab: Tab::default(),
             db_explorer_tab: DbExplorerTab::default(),
+            selected_distribution_dex: "uniswap_v3".to_string(),
+            available_distribution_dexes: vec!["uniswap_v2".to_string(), "uniswap_v3".to_string()],
+            selected_pool_dex: "uniswap_v3".to_string(),
+            available_pool_dexes: vec!["uniswap_v2".to_string(), "uniswap_v3".to_string()],
+            v3_populated_ticks: None,
+            v3_price_levels: None,
         };
 
         // Initialize with some dummy tokens for each chain
@@ -292,10 +322,11 @@ impl TelOnChainUI {
     /// If the query fails, updates the database query status with an error message.
     fn query_pools(&mut self, conn: &Connection) {
         self.db_pools.clear();
-        let sql = "SELECT address, dex, chain_id, token0_address, token1_address, fee FROM pools LIMIT 100";
+        let sql = "SELECT address, dex, chain_id, token0_address, token1_address, fee FROM pools WHERE dex = ?1 LIMIT 100";
+        let selected_dex = &self.selected_pool_dex;
         match conn.prepare(sql) {
             Ok(mut stmt) => {
-                match stmt.query_map([], |row| {
+                match stmt.query_map([selected_dex], |row| {
                     Ok(DbPool {
                         address: row.get(0)?,
                         dex: row.get(1)?,
@@ -362,40 +393,74 @@ impl TelOnChainUI {
     /// Updates `db_query_status` with an error message if the query fails.
     fn query_distributions(&mut self, conn: &Connection) {
         self.db_distributions.clear();
-        let sql = "SELECT token0_address, token1_address, dex, chain_id, data, timestamp FROM liquidity_distributions LIMIT 100";
+        let sql = "SELECT token0_address, token1_address, dex, chain_id, data, timestamp FROM liquidity_distributions WHERE dex = ?1 LIMIT 100";
+        let selected_dex = &self.selected_distribution_dex;
         match conn.prepare(sql) {
             Ok(mut stmt) => {
-                match stmt.query_map([], |row| {
+                match stmt.query_map([selected_dex], |row| {
                     let data: String = row.get(4)?;
-                    let distribution: LiquidityDistribution = serde_json::from_str(&data)
-                        .unwrap_or_else(|_| LiquidityDistribution {
-                            token0: tel_core::models::Token {
-                                address: alloy_primitives::Address::default(),
-                                symbol: String::new(),
-                                name: String::new(),
-                                decimals: 0,
+                    if selected_dex == "uniswap_v3" {
+                        let distribution: V3LiquidityDistribution = serde_json::from_str(&data)
+                            .unwrap_or_else(|_| V3LiquidityDistribution {
+                                token0: tel_core::models::Token {
+                                    address: alloy_primitives::Address::default(),
+                                    symbol: String::new(),
+                                    name: String::new(),
+                                    decimals: 0,
+                                    chain_id: 0,
+                                },
+                                token1: tel_core::models::Token {
+                                    address: alloy_primitives::Address::default(),
+                                    symbol: String::new(),
+                                    name: String::new(),
+                                    decimals: 0,
+                                    chain_id: 0,
+                                },
+                                dex: String::new(),
                                 chain_id: 0,
-                            },
-                            token1: tel_core::models::Token {
-                                address: alloy_primitives::Address::default(),
-                                symbol: String::new(),
-                                name: String::new(),
-                                decimals: 0,
+                                current_tick: 0,
+                                price_levels: vec![],
+                                timestamp: chrono::Utc::now(),
+                            });
+                        let price_points = distribution.price_levels.len();
+                        Ok(DbLiquidityDistribution {
+                            token0_address: row.get(0)?,
+                            token1_address: row.get(1)?,
+                            timestamp: row.get(5)?,
+                            price_points,
+                            distribution: Some(DistributionKind::V3(distribution)),
+                        })
+                    } else {
+                        let distribution: LiquidityDistribution = serde_json::from_str(&data)
+                            .unwrap_or_else(|_| LiquidityDistribution {
+                                token0: tel_core::models::Token {
+                                    address: alloy_primitives::Address::default(),
+                                    symbol: String::new(),
+                                    name: String::new(),
+                                    decimals: 0,
+                                    chain_id: 0,
+                                },
+                                token1: tel_core::models::Token {
+                                    address: alloy_primitives::Address::default(),
+                                    symbol: String::new(),
+                                    name: String::new(),
+                                    decimals: 0,
+                                    chain_id: 0,
+                                },
+                                dex: String::new(),
                                 chain_id: 0,
-                            },
-                            dex: String::new(),
-                            chain_id: 0,
-                            price_levels: vec![],
-                            timestamp: chrono::Utc::now(),
-                        });
-                    let price_points = distribution.price_levels.len();
-                    Ok(DbLiquidityDistribution {
-                        token0_address: row.get(0)?,
-                        token1_address: row.get(1)?,
-                        timestamp: row.get(5)?,
-                        price_points,
-                        distribution: Some(distribution),
-                    })
+                                price_levels: vec![],
+                                timestamp: chrono::Utc::now(),
+                            });
+                        let price_points = distribution.price_levels.len();
+                        Ok(DbLiquidityDistribution {
+                            token0_address: row.get(0)?,
+                            token1_address: row.get(1)?,
+                            timestamp: row.get(5)?,
+                            price_points,
+                            distribution: Some(DistributionKind::V2(distribution)),
+                        })
+                    }
                 }) {
                     Ok(distributions) => {
                         for dist in distributions {
@@ -419,12 +484,12 @@ impl TelOnChainUI {
     ///
     /// If the pools have already been loaded, the function returns immediately. Otherwise, it queries up to 200 pools matching the current DEX and chain selection, updates the internal pool list, and sets the query status message. If the database file does not exist or a query error occurs, the status message is updated accordingly.
     fn load_pool_info(&mut self) {
-        // 이미 로드했다면 스킵 (새로고침 버튼으로 강제 갱신 가능)
+        // Skip if already loaded (can force refresh with button)
         if self.pool_info_loaded {
             return;
         }
 
-        // DB 경로 확인
+        // Check database path
         let path = std::path::Path::new(&self.db_path);
         if !path.exists() {
             self.db_query_status = format!("DB file not found: {}", self.db_path);
@@ -469,15 +534,90 @@ impl TelOnChainUI {
     }
 
     fn show_liquidity_distribution(&self, ui: &mut Ui, distribution: &DbLiquidityDistribution) {
-        if let Some(dist) = &distribution.distribution {
-            ui.heading("Liquidity Distribution");
+        if let Some(DistributionKind::V3(dist)) = &distribution.distribution {
+            ui.heading("Uniswap V3 Populated Ticks");
+            // Summary
             ui.horizontal(|ui| {
-                ui.label("Token0 Address:");
-                ui.label(format!("{}", dist.token0.address));
+                ui.label("Token0:");
+                ui.label(format!("{} ({})", dist.token0.symbol, dist.token0.address));
             });
             ui.horizontal(|ui| {
-                ui.label("Token1 Address:");
-                ui.label(format!("{}", dist.token1.address));
+                ui.label("Token1:");
+                ui.label(format!("{} ({})", dist.token1.symbol, dist.token1.address));
+            });
+            ui.horizontal(|ui| {
+                ui.label("DEX:");
+                ui.label(&dist.dex);
+            });
+            ui.horizontal(|ui| {
+                ui.label("Chain ID:");
+                ui.label(format!("{}", dist.chain_id));
+            });
+            ui.horizontal(|ui| {
+                ui.label("Current Tick:");
+                ui.label(format!("{}", dist.current_tick));
+            });
+            ui.horizontal(|ui| {
+                ui.label("Timestamp:");
+                let ts = dist.timestamp.format("%Y-%m-%d %H:%M:%S");
+                ui.label(format!("{}", ts));
+            });
+            let num_ticks = dist.price_levels.len();
+            let min_price = dist
+                .price_levels
+                .iter()
+                .map(|p| p.price)
+                .fold(f64::INFINITY, f64::min);
+            let max_price = dist
+                .price_levels
+                .iter()
+                .map(|p| p.price)
+                .fold(f64::NEG_INFINITY, f64::max);
+            ui.horizontal(|ui| {
+                ui.label("Tick Count:");
+                ui.label(format!("{}", num_ticks));
+                ui.label("Price Range:");
+                ui.label(format!("{:.8} - {:.8}", min_price, max_price));
+            });
+            ui.separator();
+            if dist.price_levels.is_empty() {
+                ui.colored_label(Color32::YELLOW, "No V3 tick data available.");
+                return;
+            }
+            // Table header
+            Grid::new("v3_tick_table").striped(true).show(ui, |ui| {
+                ui.label(RichText::new("TickIdx").strong());
+                ui.label(RichText::new("TickPrice (1.0001^tick)").strong());
+                ui.label(RichText::new("Price").strong());
+                ui.label(RichText::new("Token0 Liquidity").strong());
+                ui.label(RichText::new("Token1 Liquidity").strong());
+                ui.label(RichText::new("Timestamp").strong());
+                ui.end_row();
+                for tick in &dist.price_levels {
+                    ui.label(format!("{}", tick.tick_idx));
+                    ui.label(format!("{:.8}", tick.tick_price));
+                    ui.label(format!("{:.8}", tick.price));
+                    ui.label(format!("{:.8}", tick.token0_liquidity));
+                    ui.label(format!("{:.8}", tick.token1_liquidity));
+                    ui.label(format!("{}", tick.timestamp.format("%Y-%m-%d %H:%M:%S")));
+                    ui.end_row();
+                }
+            });
+            return;
+        } else if let Some(DistributionKind::V2(dist)) = &distribution.distribution {
+            let heading = match dist.dex.as_str() {
+                "uniswap_v2" => "Uniswap V2 Liquidity Distribution",
+                "uniswap_v3" => "Uniswap V3 Liquidity Distribution",
+                other => &format!("{} Liquidity Distribution", other),
+            };
+            ui.heading(heading);
+            ui.horizontal(|ui| {
+                ui.label("Token0:");
+                ui.label(format!("{} ({})", dist.token0.symbol, dist.token0.address));
+            });
+            ui.horizontal(|ui| {
+                ui.label("Token1:");
+                ui.label(format!("{} ({})", dist.token1.symbol, dist.token1.address));
             });
             ui.horizontal(|ui| {
                 ui.label("DEX:");
@@ -492,31 +632,140 @@ impl TelOnChainUI {
                 let ts = dist.timestamp.format("%Y-%m-%d %H:%M:%S");
                 ui.label(format!("{}", ts));
             });
+            ui.horizontal(|ui| {
+                ui.label("Price Points:");
+                ui.label(format!("{}", dist.price_levels.len()));
+            });
             ui.separator();
-            ui.heading("Price Levels");
-            for (i, level) in dist.price_levels.iter().enumerate() {
-                ui.collapsing(format!("Price Level {}", i + 1), |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Price:");
-                        ui.label(format!("{:?}", level.price));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Token0 Liquidity:");
-                        ui.label(format!("{:?}", level.token0_liquidity));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Token1 Liquidity:");
-                        ui.label(format!("{:?}", level.token1_liquidity));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Timestamp:");
-                        let ts = level.timestamp.format("%Y-%m-%d %H:%M:%S");
-                        ui.label(format!("{}", ts));
-                    });
+
+            // Price levels visualization
+            if !dist.price_levels.is_empty() {
+                ui.heading("Price Levels");
+
+                // Find price range for better visualization
+                let min_price = dist
+                    .price_levels
+                    .iter()
+                    .map(|p| p.price)
+                    .fold(f64::INFINITY, f64::min);
+                let max_price = dist
+                    .price_levels
+                    .iter()
+                    .map(|p| p.price)
+                    .fold(f64::NEG_INFINITY, f64::max);
+
+                ui.horizontal(|ui| {
+                    ui.label("Price Range:");
+                    ui.label(format!("{} - {}", min_price, max_price));
                 });
+
+                // Show price levels in a more organized way
+                if dist.dex == "uniswap_v3" {
+                    // Only show V3 price levels with all info if available
+                    if let Some(v3_levels) = self.v3_price_levels.as_ref() {
+                        ui.heading("Uniswap V3 Populated Price Levels");
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            for level in v3_levels {
+                                ui.collapsing(
+                                    format!("Tick {} | Price {:.8}", level.tick_idx, level.price),
+                                    |ui| {
+                                        ui.label(format!("Tick Index: {}", level.tick_idx));
+                                        ui.label(format!(
+                                            "Tick Price (1.0001^tick): {:.8}",
+                                            level.tick_price
+                                        ));
+                                        ui.label(format!("Price: {:.8}", level.price));
+                                        ui.label(format!(
+                                            "Token0 Liquidity: {:.8}",
+                                            level.token0_liquidity
+                                        ));
+                                        ui.label(format!(
+                                            "Token1 Liquidity: {:.8}",
+                                            level.token1_liquidity
+                                        ));
+                                        ui.label(format!("Timestamp: {}", level.timestamp));
+                                    },
+                                );
+                            }
+                        });
+                    } else {
+                        ui.label("No Uniswap V3 price level data loaded.");
+                    }
+                } else {
+                    for (i, level) in dist.price_levels.iter().enumerate() {
+                        ui.collapsing(format!("Price Level {}: {}", i + 1, level.price), |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label("Price:");
+                                ui.label(format!("{}", level.price));
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Token0 Liquidity:");
+                                ui.label(format!("{}", level.token0_liquidity));
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Token1 Liquidity:");
+                                ui.label(format!("{}", level.token1_liquidity));
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Total Liquidity:");
+                                ui.label(format!(
+                                    "{}",
+                                    level.token0_liquidity + level.token1_liquidity
+                                ));
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Timestamp:");
+                                let ts = level.timestamp.format("%Y-%m-%d %H:%M:%S");
+                                ui.label(format!("{}", ts));
+                            });
+                        });
+                    }
+                }
+
+                // Add a simple chart visualization
+                if dist.price_levels.len() > 1 {
+                    ui.separator();
+                    ui.heading("Liquidity Chart");
+
+                    let chart_height = 150.0;
+                    let chart_width = ui.available_width();
+
+                    let (response, painter) = ui
+                        .allocate_painter([chart_width, chart_height].into(), egui::Sense::hover());
+
+                    // Simple bar chart of liquidity vs price
+                    let rect = response.rect;
+                    let price_range = max_price - min_price;
+                    let max_liquidity = dist
+                        .price_levels
+                        .iter()
+                        .map(|p| p.token0_liquidity + p.token1_liquidity)
+                        .fold(0.0, f64::max);
+
+                    for level in &dist.price_levels {
+                        let x = rect.left()
+                            + ((level.price - min_price) / price_range * rect.width() as f64)
+                                as f32;
+                        let height = ((level.token0_liquidity + level.token1_liquidity)
+                            / max_liquidity
+                            * rect.height() as f64) as f32;
+                        let y = rect.bottom() - height;
+
+                        let bar_rect =
+                            egui::Rect::from_min_size([x, y].into(), [2.0_f32, height].into());
+
+                        painter.rect_filled(bar_rect, 0.0, Color32::from_rgb(0, 150, 0));
+                    }
+                }
+            } else {
+                ui.label("No price levels available");
             }
         } else {
-            ui.label("No distribution data");
+            if self.selected_distribution_dex == "uniswap_v3" {
+                ui.label("No Uniswap V3 distribution data found. Please run the indexer or wait for data to be indexed.");
+            } else {
+                ui.label("No distribution data");
+            }
         }
     }
 }
@@ -708,7 +957,7 @@ impl TelOnChainUI {
             ui.label("Database Path:");
             ui.text_edit_singleline(&mut self.db_path);
 
-            // Query 버튼을 각 탭에 맞게 동작하도록 변경
+            // Query button to be controlled by tabs
             let query_label = match self.db_explorer_tab {
                 DbExplorerTab::Pools => "Query Pools",
                 DbExplorerTab::Tokens => "Query Tokens",
@@ -789,6 +1038,41 @@ impl TelOnChainUI {
 
         match self.db_explorer_tab {
             DbExplorerTab::Pools => {
+                if self.db_explorer_tab == DbExplorerTab::Pools {
+                    ui.horizontal(|ui| {
+                        ui.label("DEX:");
+                        egui::ComboBox::from_id_source("pool_dex_select")
+                            .selected_text(&self.selected_pool_dex)
+                            .show_ui(ui, |ui| {
+                                for dex in &self.available_pool_dexes {
+                                    ui.selectable_value(
+                                        &mut self.selected_pool_dex,
+                                        dex.clone(),
+                                        dex,
+                                    );
+                                }
+                            });
+                        if ui.button("Query Pools").clicked() {
+                            let path = Path::new(&self.db_path);
+                            if !path.exists() {
+                                self.db_query_status =
+                                    format!("Database file not found: {}", self.db_path);
+                                return;
+                            }
+                            match Connection::open(path) {
+                                Ok(conn) => {
+                                    self.query_pools(&conn);
+                                    self.db_query_status =
+                                        format!("Queried {} pools", self.db_pools.len());
+                                }
+                                Err(e) => {
+                                    self.db_query_status =
+                                        format!("Failed to connect to database: {}", e);
+                                }
+                            }
+                        }
+                    });
+                }
                 if !self.db_pools.is_empty() {
                     ui.heading("Pool Data");
                     Grid::new("pools_grid").striped(true).show(ui, |ui| {
@@ -842,6 +1126,43 @@ impl TelOnChainUI {
                 }
             }
             DbExplorerTab::Distributions => {
+                if self.db_explorer_tab == DbExplorerTab::Distributions {
+                    ui.horizontal(|ui| {
+                        ui.label("DEX:");
+                        egui::ComboBox::from_id_source("distribution_dex_select")
+                            .selected_text(&self.selected_distribution_dex)
+                            .show_ui(ui, |ui| {
+                                for dex in &self.available_distribution_dexes {
+                                    ui.selectable_value(
+                                        &mut self.selected_distribution_dex,
+                                        dex.clone(),
+                                        dex,
+                                    );
+                                }
+                            });
+                        if ui.button("Query Distributions").clicked() {
+                            let path = Path::new(&self.db_path);
+                            if !path.exists() {
+                                self.db_query_status =
+                                    format!("Database file not found: {}", self.db_path);
+                                return;
+                            }
+                            match Connection::open(path) {
+                                Ok(conn) => {
+                                    self.query_distributions(&conn);
+                                    self.db_query_status = format!(
+                                        "Queried {} distributions",
+                                        self.db_distributions.len()
+                                    );
+                                }
+                                Err(e) => {
+                                    self.db_query_status =
+                                        format!("Failed to connect to database: {}", e);
+                                }
+                            }
+                        }
+                    });
+                }
                 if !self.db_distributions.is_empty() {
                     ui.heading("Distribution Data");
                     ui.separator();
@@ -854,7 +1175,11 @@ impl TelOnChainUI {
                         }
                     });
                 } else {
-                    ui.label("No distribution data available. Query the database first.");
+                    if self.selected_distribution_dex == "uniswap_v3" {
+                        ui.colored_label(Color32::YELLOW, "No Uniswap V3 distributions found. Please run the indexer or wait for data to be indexed.");
+                    } else {
+                        ui.label("No distribution data available. Query the database first.");
+                    }
                 }
             }
         }
@@ -925,7 +1250,7 @@ impl TelOnChainUI {
     /// Shows a scrollable list of pools matching the selected filters. Selecting a pool displays its detailed information.
     /// If no pools are found, a message is shown instead.
     fn ui_pool_info(&mut self, ui: &mut Ui) {
-        // 상단 필터
+        // Top filters
         ui.horizontal(|ui| {
             ui.label("DEX:");
             ComboBox::from_id_source("pi_dex")
@@ -946,12 +1271,12 @@ impl TelOnChainUI {
                 });
 
             if ui.button("Load Pools").clicked() {
-                self.pool_info_loaded = false; // 강제 새로고침
+                self.pool_info_loaded = false; // Force refresh
                 self.load_pool_info();
             }
         });
 
-        // 처음 진입 시 자동 로드
+        // Auto-load on first entry
         if !self.pool_info_loaded {
             self.load_pool_info();
         }
@@ -959,13 +1284,13 @@ impl TelOnChainUI {
         ui.separator();
         ui.label(RichText::new(&self.db_query_status).color(Color32::GOLD));
 
-        // 풀 리스트
+        // Pool list
         if self.db_pools.is_empty() {
             ui.label("No pools found for chosen filter.");
             return;
         }
 
-        // 왼쪽: 리스트  |  오른쪽: 세부 정보
+        // Left: List  |  Right: Detailed Info
         ui.horizontal(|ui| {
             ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
                 for (idx, p) in self.db_pools.iter().enumerate() {

@@ -1,21 +1,21 @@
-use tel_core::config::Config;
-use tel_core::core::liquidity::identify_walls;
-use tel_core::error::Error;
-use tel_core::models::{LiquidityWallsResponse, Token};
-use tel_core::providers::ProviderManager;
-use tel_core::storage::Storage;
-use tel_core::storage::SqliteStorage;
 use alloy_primitives::Address;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json};
 use axum::routing::get;
 use axum::Router;
-use tower_http::cors::{Any, CorsLayer};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tracing::{info, warn, debug};
+use tel_core::config::Config;
+use tel_core::core::liquidity::identify_walls;
+use tel_core::error::Error;
+use tel_core::models::{LiquidityWallsResponse, Token};
+use tel_core::providers::ProviderManager;
+use tel_core::storage::SqliteStorage;
+use tel_core::storage::Storage;
+use tower_http::cors::{Any, CorsLayer};
+use tracing::{debug, info, warn};
 
 /// Query parameters for liquidity walls endpoint
 #[derive(Debug, Deserialize)]
@@ -88,8 +88,6 @@ fn routes(state: Arc<AppState>) -> Router {
         .with_state(state)
 }
 
-
-
 /// Health check endpoint
 async fn health_check() -> impl IntoResponse {
     StatusCode::OK
@@ -114,26 +112,32 @@ async fn get_liquidity_walls(
     let chain_id = params.chain_id.unwrap_or(1);
 
     // Get tokens from database
-    let token0 = state.storage.get_token(token0_address, chain_id)?.ok_or_else(|| ApiError {
-        message: format!("Token {} not found in database", token0_address),
-        code: 404,
-    })?;
-    let token1 = state.storage.get_token(token1_address, chain_id)?.ok_or_else(|| ApiError {
-        message: format!("Token {} not found in database", token1_address),
-        code: 404,
-    })?;
+    let token0 = state
+        .storage
+        .get_token(token0_address, chain_id)?
+        .ok_or_else(|| ApiError {
+            message: format!("Token {} not found in database", token0_address),
+            code: 404,
+        })?;
+    let token1 = state
+        .storage
+        .get_token(token1_address, chain_id)?
+        .ok_or_else(|| ApiError {
+            message: format!("Token {} not found in database", token1_address),
+            code: 404,
+        })?;
 
     // Get liquidity distributions from database
     let dex_filter = params.dex.as_deref();
     let mut all_distributions = Vec::new();
-    
+
     // Define supported DEXes
     let dexes = if let Some(dex) = dex_filter {
         vec![dex.to_string()]
     } else {
         vec![
             "uniswap_v3".to_string(),
-            "uniswap_v2".to_string(), 
+            "uniswap_v2".to_string(),
             "sushiswap".to_string(),
             "curve".to_string(),
             "balancer".to_string(),
@@ -142,7 +146,12 @@ async fn get_liquidity_walls(
 
     // Collect liquidity distributions from all relevant DEXes
     for dex in dexes {
-        match state.storage.get_liquidity_distribution(token0_address, token1_address, &dex, chain_id) {
+        match state.storage.get_liquidity_distribution(
+            token0_address,
+            token1_address,
+            &dex,
+            chain_id,
+        ) {
             Ok(Some(distribution)) => {
                 debug!("Found liquidity distribution for {} DEX", dex);
                 all_distributions.push(distribution);
@@ -158,10 +167,12 @@ async fn get_liquidity_walls(
 
     // Calculate current price (use average from distributions or fallback)
     let current_price = if !all_distributions.is_empty() {
-        all_distributions.iter()
+        all_distributions
+            .iter()
             .filter_map(|d| d.price_levels.last())
             .map(|pl| pl.price)
-            .sum::<f64>() / all_distributions.len() as f64
+            .sum::<f64>()
+            / all_distributions.len() as f64
     } else {
         // Fallback price calculation or default
         1625.75
@@ -190,27 +201,25 @@ async fn get_liquidity_walls(
     Ok(Json(response))
 }
 
-
-
 /// Generate price ranges around current price for wall identification
 fn generate_price_ranges(current_price: f64, num_ranges: usize) -> Vec<(f64, f64)> {
     let mut ranges = Vec::new();
     let step_size = current_price * 0.05; // 5% steps
-    
+
     for i in 0..num_ranges {
         let offset = (i as f64 + 1.0) * step_size;
-        
+
         // Buy walls below current price
         let buy_lower = current_price - offset - step_size;
         let buy_upper = current_price - offset;
         ranges.push((buy_lower, buy_upper));
-        
-        // Sell walls above current price  
+
+        // Sell walls above current price
         let sell_lower = current_price + offset;
         let sell_upper = current_price + offset + step_size;
         ranges.push((sell_lower, sell_upper));
     }
-    
+
     ranges
 }
 
@@ -224,10 +233,13 @@ async fn get_token_info(
         code: 400,
     })?;
 
-    let token = state.storage.get_token(address, chain_id)?.ok_or_else(|| ApiError {
-        message: format!("Token {} not found in database", address),
-        code: 404,
-    })?;
+    let token = state
+        .storage
+        .get_token(address, chain_id)?
+        .ok_or_else(|| ApiError {
+            message: format!("Token {} not found in database", address),
+            code: 404,
+        })?;
     Ok(Json(token))
 }
 
@@ -238,10 +250,8 @@ async fn get_pools_by_dex(
 ) -> Result<Json<Vec<String>>, ApiError> {
     match state.storage.get_pools_by_dex(&dex, chain_id) {
         Ok(pools) => {
-            let pool_addresses: Vec<String> = pools
-                .iter()
-                .map(|pool| pool.address.to_string())
-                .collect();
+            let pool_addresses: Vec<String> =
+                pools.iter().map(|pool| pool.address.to_string()).collect();
             Ok(Json(pool_addresses))
         }
         Err(e) => {
@@ -258,12 +268,7 @@ pub async fn run_server(config: Config) -> Result<(), Error> {
     let storage = Arc::new(SqliteStorage::new(&config.database.url)?);
 
     // Initialize the provider manager
-    let provider_manager = Arc::new(ProviderManager::new(
-        &config.ethereum,
-        None,
-        None,
-        None,
-    )?);
+    let provider_manager = Arc::new(ProviderManager::new(&config.ethereum, None, None, None)?);
 
     let state = Arc::new(AppState {
         storage,
@@ -273,8 +278,15 @@ pub async fn run_server(config: Config) -> Result<(), Error> {
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
-        .allow_methods([axum::http::Method::GET, axum::http::Method::POST, axum::http::Method::OPTIONS])
-        .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::AUTHORIZATION]);
+        .allow_methods([
+            axum::http::Method::GET,
+            axum::http::Method::POST,
+            axum::http::Method::OPTIONS,
+        ])
+        .allow_headers([
+            axum::http::header::CONTENT_TYPE,
+            axum::http::header::AUTHORIZATION,
+        ]);
     let app = routes(state).layer(cors);
 
     // Use port 8081 instead of the configured port

@@ -15,10 +15,14 @@ pub struct Balancer {
 }
 
 impl Balancer {
-    pub fn new(factory_address: Address, provider_manager: Arc<ProviderManager>, chain_id: u64) -> Result<Self> {
-        let provider = provider_manager
-            .by_chain_id(chain_id)
-            .ok_or_else(|| Error::ProviderError(format!("No provider found for chain {}", chain_id)))?;
+    pub fn new(
+        factory_address: Address,
+        provider_manager: Arc<ProviderManager>,
+        chain_id: u64,
+    ) -> Result<Self> {
+        let provider = provider_manager.by_chain_id(chain_id).ok_or_else(|| {
+            Error::ProviderError(format!("No provider found for chain {}", chain_id))
+        })?;
 
         Ok(Self {
             factory_address,
@@ -68,7 +72,7 @@ impl DexProtocol for Balancer {
         self.provider.clone()
     }
 
-    async fn get_pool(&self, pool_address: Address) -> Result<Pool> {
+    async fn get_pool(&self, _pool_address: Address) -> Result<Pool> {
         // Placeholder
         Err(Error::Unknown("Not implemented".to_string()))
     }
@@ -80,7 +84,7 @@ impl DexProtocol for Balancer {
 
     async fn get_liquidity_distribution(
         &self,
-        pool_address: Address,
+        _pool_address: Address,
     ) -> Result<LiquidityDistribution> {
         // Placeholder
         Err(Error::Unknown("Not implemented".to_string()))
@@ -88,9 +92,9 @@ impl DexProtocol for Balancer {
 
     async fn calculate_swap_impact(
         &self,
-        pool_address: Address,
-        token_in: Address,
-        amount_in: f64,
+        _pool_address: Address,
+        _token_in: Address,
+        _amount_in: f64,
     ) -> Result<f64> {
         // Placeholder
         Err(Error::Unknown("Not implemented".to_string()))

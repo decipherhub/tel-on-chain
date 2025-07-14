@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 /// Identifies liquidity walls from a set of liquidity distributions
 pub fn identify_walls(
-    distributions: &[LiquidityDistribution],
+    _distributions: &[LiquidityDistribution],
     price_ranges: &[(f64, f64)],
 ) -> (Vec<LiquidityWall>, Vec<LiquidityWall>) {
     let mut buy_walls = Vec::new();

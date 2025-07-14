@@ -32,8 +32,8 @@ pub fn identify_support_resistance(
             continue;
         }
 
-        let prev_pl = &price_levels[i - 1];
-        let next_pl = &price_levels[i + 1];
+        let _prev_pl = &price_levels[i - 1];
+        let _next_pl = &price_levels[i + 1];
 
         // Calculate combined liquidity at this level
         let combined_liquidity = pl.token0_liquidity + pl.token1_liquidity;
