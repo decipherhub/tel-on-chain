@@ -35,14 +35,6 @@ pub trait Storage: Send + Sync {
         dex: &str,
         chain_id: u64,
     ) -> Result<Option<LiquidityDistribution>>;
-    fn save_v3_liquidity_distribution(
-        &self,
-        _distribution: &V3LiquidityDistribution,
-    ) -> Result<()> {
-        Err(Error::DatabaseError(
-            "Not implemented for this storage backend".to_string(),
-        ))
-    }
 }
 
 pub struct SqliteStorage {
@@ -99,32 +91,6 @@ impl SqliteStorage {
             [],
         )?;
 
-        Ok(())
-    }
-
-    pub fn save_v3_liquidity_distribution(
-        &self,
-        distribution: &V3LiquidityDistribution,
-    ) -> Result<()> {
-        use rusqlite::{params, TransactionBehavior};
-        let mut conn = self.conn.lock().unwrap();
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let data = serde_json::to_string(&distribution)
-            .map_err(|e| Error::DatabaseError(format!("serialize distribution: {e}")))?;
-        tx.execute(
-            "INSERT OR REPLACE INTO liquidity_distributions
-            (token0_address, token1_address, dex, chain_id, data, timestamp)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![
-                distribution.token0.address.to_string(),
-                distribution.token1.address.to_string(),
-                distribution.dex,
-                distribution.chain_id,
-                data,
-                distribution.timestamp.timestamp()
-            ],
-        )?;
-        tx.commit()?;
         Ok(())
     }
 
@@ -557,10 +523,6 @@ impl Storage for SqliteStorage {
                 "get_liquidity_distribution error: {e}"
             ))),
         }
-    }
-
-    fn save_v3_liquidity_distribution(&self, distribution: &V3LiquidityDistribution) -> Result<()> {
-        self.save_v3_liquidity_distribution(distribution)
     }
 }
 

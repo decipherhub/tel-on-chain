@@ -449,6 +449,7 @@ impl TelOnChainUI {
                                 },
                                 dex: String::new(),
                                 chain_id: 0,
+                                current_price: 0.0,
                                 price_levels: vec![],
                                 timestamp: chrono::Utc::now(),
                             });
@@ -646,12 +647,12 @@ impl TelOnChainUI {
                 let min_price = dist
                     .price_levels
                     .iter()
-                    .map(|p| p.price)
+                    .map(|p| p.lower_price)
                     .fold(f64::INFINITY, f64::min);
                 let max_price = dist
                     .price_levels
                     .iter()
-                    .map(|p| p.price)
+                    .map(|p| p.upper_price)
                     .fold(f64::NEG_INFINITY, f64::max);
 
                 ui.horizontal(|ui| {
@@ -693,10 +694,10 @@ impl TelOnChainUI {
                     }
                 } else {
                     for (i, level) in dist.price_levels.iter().enumerate() {
-                        ui.collapsing(format!("Price Level {}: {}", i + 1, level.price), |ui| {
+                        ui.collapsing(format!("Price Level {}: {}", i + 1, level.lower_price), |ui| {
                             ui.horizontal(|ui| {
                                 ui.label("Price:");
-                                ui.label(format!("{}", level.price));
+                                ui.label(format!("{}", level.lower_price));
                             });
                             ui.horizontal(|ui| {
                                 ui.label("Token0 Liquidity:");
@@ -744,7 +745,7 @@ impl TelOnChainUI {
 
                     for level in &dist.price_levels {
                         let x = rect.left()
-                            + ((level.price - min_price) / price_range * rect.width() as f64)
+                            + ((level.lower_price - min_price) / price_range * rect.width() as f64)
                                 as f32;
                         let height = ((level.token0_liquidity + level.token1_liquidity)
                             / max_liquidity

@@ -176,26 +176,8 @@ impl Indexer {
             .ok_or_else(|| Error::UnknownDEX(pool.dex.clone()))?;
 
         // Get and store liquidity distribution
-        if pool.dex == "uniswap_v3" {
-            // V3: use V3LiquidityDistribution and save_v3_liquidity_distribution
-            let v3_dist = dex
-                .as_any()
-                .downcast_ref::<crate::dexes::uniswap_v3::UniswapV3>()
-                .ok_or_else(|| Error::UnknownDEX(pool.dex.clone()))?
-                .get_v3_liquidity_distribution(pool.address)
-                .await?;
-            crate::storage::SqliteStorage::save_v3_liquidity_distribution(
-                &*(self
-                    .storage
-                    .clone()
-                    .downcast::<crate::storage::SqliteStorage>()
-                    .map_err(|_| Error::DatabaseError("Failed to downcast storage".to_string()))?),
-                &v3_dist,
-            )?;
-        } else {
-            let distribution = dex.get_liquidity_distribution(pool.address).await?;
-            storage::save_liquidity_distribution_async(self.storage.clone(), distribution).await?;
-        }
+        let distribution = dex.get_liquidity_distribution(pool.address).await?;
+        storage::save_liquidity_distribution_async(self.storage.clone(), distribution).await?;
 
         Ok(())
     }
@@ -386,49 +368,27 @@ pub async fn run_indexer(
             let pool = indexer.index_pool(&dex, &pool_address, chain_id).await?;
             info!("Indexed pool: {} on {}", pool.address, pool.dex);
 
-            if dex == "uniswap_v3" {
-                // V3 section: save V3LiquidityDistribution
-                let dex_impl = indexer.dexes.get(&dex).unwrap();
-                let v3_dist = dex_impl
-                    .as_any()
-                    .downcast_ref::<crate::dexes::uniswap_v3::UniswapV3>()
-                    .ok_or_else(|| Error::UnknownDEX(dex.clone()))?
-                    .get_v3_liquidity_distribution(pool.address)
-                    .await?;
-                crate::storage::SqliteStorage::save_v3_liquidity_distribution(
-                    &*(indexer
-                        .storage
-                        .clone()
-                        .downcast::<crate::storage::SqliteStorage>()
-                        .map_err(|_| {
-                            Error::DatabaseError("Failed to downcast storage".to_string())
-                        })?),
-                    &v3_dist,
-                )?;
-            } else {
-                // Existing V2 method
-                match indexer
-                    .get_liquidity_distribution(&dex, &pool_address)
+            match indexer
+                .get_liquidity_distribution(&dex, &pool_address)
+                .await
+            {
+                Ok(distribution) => {
+                    info!(
+                        "Got liquidity distribution with {} price levels",
+                        distribution.price_levels.len()
+                    );
+                    // Store distribution
+                    if let Err(e) = storage::save_liquidity_distribution_async(
+                        indexer.storage.clone(),
+                        distribution,
+                    )
                     .await
-                {
-                    Ok(distribution) => {
-                        info!(
-                            "Got liquidity distribution with {} price levels",
-                            distribution.price_levels.len()
-                        );
-                        // Store distribution
-                        if let Err(e) = storage::save_liquidity_distribution_async(
-                            indexer.storage.clone(),
-                            distribution,
-                        )
-                        .await
-                        {
-                            error!("Failed to store liquidity distribution: {}", e);
-                        }
+                    {
+                        error!("Failed to store liquidity distribution: {}", e);
                     }
-                    Err(e) => {
-                        error!("Failed to get liquidity distribution: {}", e);
-                    }
+                }
+                Err(e) => {
+                    error!("Failed to get liquidity distribution: {}", e);
                 }
             }
         }

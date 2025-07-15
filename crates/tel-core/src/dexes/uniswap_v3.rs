@@ -1,7 +1,7 @@
 use crate::dexes::DexProtocol;
 use crate::error::Error;
 use crate::models::{
-    LiquidityDistribution, Pool, PriceLiquidity, Token, V3LiquidityDistribution, V3PriceLevel,
+    LiquidityDistribution, Pool, PriceLiquidity, Side, Token, V3LiquidityDistribution, V3PriceLevel,
     V3PriceLiquidity,
 };
 use crate::providers::EthereumProvider;
@@ -173,7 +173,7 @@ impl UniswapV3 {
     }
 
     /// Fetch all active ticks for a pool using TickLens
-    async fn get_active_ticks(&self, pool_address: Address) -> Result<Vec<(i32, u128, i128)>> {
+    async fn get_active_ticks(&self, pool_address: Address) -> Result<(i32, Vec<(i32, u128, i128)>)> {
         let tick_lens_address =
             Address::from_str("0xbfd8137f7d1516D3ea5cA83523914859ec47F573").unwrap();
         let tick_lens = ITickLens::new(tick_lens_address, self.provider.provider());
@@ -209,7 +209,7 @@ impl UniswapV3 {
             }
         }
         active_ticks.sort_by_key(|(tick, _, _)| *tick);
-        Ok(active_ticks)
+        Ok((current_tick, active_ticks))
     }
 
     /// Build a filter for PoolCreated events
@@ -240,6 +240,7 @@ impl UniswapV3 {
         LiquidityDistribution {
             token0: token0.clone(),
             token1: token1.clone(),
+            current_price: 0.0,
             dex: dex.to_string(),
             chain_id,
             price_levels: vec![],
@@ -368,84 +369,29 @@ impl DexProtocol for UniswapV3 {
         &self,
         pool_address: Address,
     ) -> Result<LiquidityDistribution> {
-        let pool = match self.get_pool(pool_address).await {
-            Ok(p) => p,
-            Err(_) => {
-                let dummy = Token {
-                    address: pool_address,
-                    symbol: String::new(),
-                    name: String::new(),
-                    decimals: 0,
-                    chain_id: self.chain_id(),
-                };
-                return Ok(Self::empty_dist(
-                    &dummy,
-                    &dummy,
-                    &self.name().to_lowercase(),
-                    self.chain_id(),
-                ));
-            }
-        };
-        let token0 = &pool.tokens[0];
-        let token1 = &pool.tokens[1];
-
-        let active_ticks = match self.get_active_ticks(pool_address).await {
-            Ok(ticks) => ticks,
-            Err(_) => {
-                return Ok(Self::empty_dist(
-                    token0,
-                    token1,
-                    &self.name().to_lowercase(),
-                    self.chain_id(),
-                ))
-            }
-        };
-        if active_ticks.is_empty() {
-            return Ok(Self::empty_dist(
-                token0,
-                token1,
-                &self.name().to_lowercase(),
-                self.chain_id(),
-            ));
-        }
-        let mut price_levels = Vec::new();
-        let mut total_liquidity: i128 = 0;
-        for (tick_idx, liquidity_gross, liquidity_net) in &active_ticks {
-            total_liquidity += *liquidity_net;
-            price_levels.push(Self::build_v3_price_liquidity(
-                *tick_idx,
-                *liquidity_gross,
-                *liquidity_net,
-                token0.decimals,
-                token1.decimals,
-                total_liquidity,
-            ));
-        }
-        price_levels.sort_by(|a, b| a.price.partial_cmp(&b.price).unwrap());
-        if price_levels.is_empty() {
-            return Ok(Self::empty_dist(
-                token0,
-                token1,
-                &self.name().to_lowercase(),
-                self.chain_id(),
-            ));
-        }
-        let price_levels_api: Vec<PriceLiquidity> = price_levels
+        let v3_dist = self.get_v3_liquidity_distribution(pool_address).await?;
+        let current_price = Self::tick_to_price(v3_dist.current_tick, v3_dist.token0.decimals, v3_dist.token1.decimals);
+        let price_levels = v3_dist
+            .price_levels
             .iter()
-            .map(|v3| PriceLiquidity {
-                price: v3.price,
-                token0_liquidity: v3.token0_liquidity,
-                token1_liquidity: v3.token1_liquidity,
-                timestamp: v3.timestamp,
+            .map(|lvl| PriceLiquidity {
+                side: if lvl.price < current_price { Side::Buy } else { Side::Sell },
+                lower_price: lvl.price,
+                upper_price: lvl.price,
+                token0_liquidity: lvl.token0_liquidity,
+                token1_liquidity: lvl.token1_liquidity,
+                timestamp: lvl.timestamp,
             })
             .collect();
+
         Ok(LiquidityDistribution {
-            token0: token0.clone(),
-            token1: token1.clone(),
-            dex: self.name().to_lowercase(),
-            chain_id: self.chain_id(),
-            price_levels: price_levels_api,
-            timestamp: Utc::now(),
+            token0: v3_dist.token0.clone(),
+            token1: v3_dist.token1.clone(),
+            current_price,
+            dex: v3_dist.dex.clone(),
+            chain_id: v3_dist.chain_id,
+            price_levels,
+            timestamp: v3_dist.timestamp,
         })
     }
 
@@ -482,22 +428,9 @@ impl DexProtocol for UniswapV3 {
         };
         let token0 = &pool.tokens[0];
         let token1 = &pool.tokens[1];
-        let pool_contract = IUniswapV3Pool::new(pool_address, self.provider.provider());
-        // Try to fetch the current slot0 state from the pool contract.
-        // If the call fails, return an empty liquidity distribution for this pool.
-        let slot0 = match pool_contract.slot0().call().await {
-            Ok(s) => s,
-            Err(_) => {
-                return Ok(Self::empty_v3_dist(
-                    token0,
-                    token1,
-                    &self.name().to_lowercase(),
-                    self.chain_id(),
-                ))
-            }
-        };
-        let active_ticks = match self.get_active_ticks(pool_address).await {
-            Ok(ticks) => ticks,
+
+        let (current_tick, active_ticks) = match self.get_active_ticks(pool_address).await {
+            Ok((current_tick, ticks)) => (current_tick, ticks),
             Err(_) => {
                 return Ok(Self::empty_v3_dist(
                     token0,
@@ -550,7 +483,7 @@ impl DexProtocol for UniswapV3 {
             token1: token1.clone(),
             dex: self.name().to_lowercase(),
             chain_id: self.chain_id(),
-            current_tick: slot0.tick.try_into().unwrap_or(0),
+            current_tick,
             price_levels: v3_price_levels,
             timestamp: Utc::now(),
         })

@@ -15,6 +15,8 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tracing::{info, warn, debug, error};
 use std::collections::HashMap;
+use tower_http::cors::CorsLayer;
+use tower_http::cors::Any;
 
 /// Query parameters for liquidity walls endpoint
 #[derive(Debug, Deserialize)]
