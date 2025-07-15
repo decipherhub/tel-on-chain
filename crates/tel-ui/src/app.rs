@@ -17,7 +17,7 @@ const DEFAULT_DB_PATH: &str = "sqlite_tel_on_chain.db";
 // Type aliases from the main project to use with the API
 type Address = alloy_primitives::Address;
 
-use tel_core::models::{LiquidityDistribution, V3LiquidityDistribution, V3PriceLevel};
+use tel_core::models::{LiquidityDistribution, V3PriceLevel};
 
 #[derive(Debug, Clone, Deserialize)]
 struct Token {
@@ -56,13 +56,6 @@ struct V3PopulatedTick {
     timestamp: chrono::DateTime<chrono::Utc>,
 }
 
-// Database query results
-#[derive(Debug, Clone)]
-enum DistributionKind {
-    V2(LiquidityDistribution),
-    V3(V3LiquidityDistribution),
-}
-
 #[derive(Debug, Clone)]
 struct DbPool {
     address: String,
@@ -88,7 +81,7 @@ struct DbLiquidityDistribution {
     token1_address: String,
     timestamp: i64,
     price_points: usize,
-    distribution: Option<DistributionKind>, // Entire JSON
+    distribution: Option<LiquidityDistribution>, // Entire JSON
 }
 
 pub struct TelOnChainUI {
@@ -399,69 +392,36 @@ impl TelOnChainUI {
             Ok(mut stmt) => {
                 match stmt.query_map([selected_dex], |row| {
                     let data: String = row.get(4)?;
-                    if selected_dex == "uniswap_v3" {
-                        let distribution: V3LiquidityDistribution = serde_json::from_str(&data)
-                            .unwrap_or_else(|_| V3LiquidityDistribution {
-                                token0: tel_core::models::Token {
-                                    address: alloy_primitives::Address::default(),
-                                    symbol: String::new(),
-                                    name: String::new(),
-                                    decimals: 0,
-                                    chain_id: 0,
-                                },
-                                token1: tel_core::models::Token {
-                                    address: alloy_primitives::Address::default(),
-                                    symbol: String::new(),
-                                    name: String::new(),
-                                    decimals: 0,
-                                    chain_id: 0,
-                                },
-                                dex: String::new(),
+                    let distribution: LiquidityDistribution = serde_json::from_str(&data)
+                        .unwrap_or_else(|_| LiquidityDistribution {
+                            token0: tel_core::models::Token {
+                                address: alloy_primitives::Address::default(),
+                                symbol: String::new(),
+                                name: String::new(),
+                                decimals: 0,
                                 chain_id: 0,
-                                current_tick: 0,
-                                price_levels: vec![],
-                                timestamp: chrono::Utc::now(),
-                            });
-                        let price_points = distribution.price_levels.len();
-                        Ok(DbLiquidityDistribution {
-                            token0_address: row.get(0)?,
-                            token1_address: row.get(1)?,
-                            timestamp: row.get(5)?,
-                            price_points,
-                            distribution: Some(DistributionKind::V3(distribution)),
-                        })
-                    } else {
-                        let distribution: LiquidityDistribution = serde_json::from_str(&data)
-                            .unwrap_or_else(|_| LiquidityDistribution {
-                                token0: tel_core::models::Token {
-                                    address: alloy_primitives::Address::default(),
-                                    symbol: String::new(),
-                                    name: String::new(),
-                                    decimals: 0,
-                                    chain_id: 0,
-                                },
-                                token1: tel_core::models::Token {
-                                    address: alloy_primitives::Address::default(),
-                                    symbol: String::new(),
-                                    name: String::new(),
-                                    decimals: 0,
-                                    chain_id: 0,
-                                },
-                                dex: String::new(),
+                            },
+                            token1: tel_core::models::Token {
+                                address: alloy_primitives::Address::default(),
+                                symbol: String::new(),
+                                name: String::new(),
+                                decimals: 0,
                                 chain_id: 0,
-                                current_price: 0.0,
-                                price_levels: vec![],
-                                timestamp: chrono::Utc::now(),
-                            });
-                        let price_points = distribution.price_levels.len();
-                        Ok(DbLiquidityDistribution {
-                            token0_address: row.get(0)?,
-                            token1_address: row.get(1)?,
-                            timestamp: row.get(5)?,
-                            price_points,
-                            distribution: Some(DistributionKind::V2(distribution)),
-                        })
-                    }
+                            },
+                            dex: String::new(),
+                            chain_id: 0,
+                            current_price: 0.0,
+                            price_levels: vec![],
+                            timestamp: chrono::Utc::now(),
+                        });
+                    let price_points = distribution.price_levels.len();
+                    Ok(DbLiquidityDistribution {
+                        token0_address: row.get(0)?,
+                        token1_address: row.get(1)?,
+                        timestamp: row.get(5)?,
+                        price_points,
+                        distribution: Some(distribution),
+                    })
                 }) {
                     Ok(distributions) => {
                         for dist in distributions {
@@ -535,238 +495,128 @@ impl TelOnChainUI {
     }
 
     fn show_liquidity_distribution(&self, ui: &mut Ui, distribution: &DbLiquidityDistribution) {
-        if let Some(DistributionKind::V3(dist)) = &distribution.distribution {
-            ui.heading("Uniswap V3 Populated Ticks");
-            // Summary
-            ui.horizontal(|ui| {
-                ui.label("Token0:");
-                ui.label(format!("{} ({})", dist.token0.symbol, dist.token0.address));
-            });
-            ui.horizontal(|ui| {
-                ui.label("Token1:");
-                ui.label(format!("{} ({})", dist.token1.symbol, dist.token1.address));
-            });
-            ui.horizontal(|ui| {
-                ui.label("DEX:");
-                ui.label(&dist.dex);
-            });
-            ui.horizontal(|ui| {
-                ui.label("Chain ID:");
-                ui.label(format!("{}", dist.chain_id));
-            });
-            ui.horizontal(|ui| {
-                ui.label("Current Tick:");
-                ui.label(format!("{}", dist.current_tick));
-            });
-            ui.horizontal(|ui| {
-                ui.label("Timestamp:");
-                let ts = dist.timestamp.format("%Y-%m-%d %H:%M:%S");
-                ui.label(format!("{}", ts));
-            });
-            let num_ticks = dist.price_levels.len();
+        let dist = distribution.distribution.as_ref().unwrap();
+        let heading = match dist.dex.as_str() {
+            "uniswap_v2" => "Uniswap V2 Liquidity Distribution",
+            "uniswap_v3" => "Uniswap V3 Liquidity Distribution",
+            other => &format!("{} Liquidity Distribution", other),
+        };
+        ui.heading(heading);
+        ui.horizontal(|ui| {
+            ui.label("Token0:");
+            ui.label(format!("{} ({})", dist.token0.symbol, dist.token0.address));
+        });
+        ui.horizontal(|ui| {
+            ui.label("Token1:");
+            ui.label(format!("{} ({})", dist.token1.symbol, dist.token1.address));
+        });
+        ui.horizontal(|ui| {
+            ui.label("DEX:");
+            ui.label(&dist.dex);
+        });
+        ui.horizontal(|ui| {
+            ui.label("Chain ID:");
+            ui.label(format!("{}", dist.chain_id));
+        });
+        ui.horizontal(|ui| {
+            ui.label("Timestamp:");
+            let ts = dist.timestamp.format("%Y-%m-%d %H:%M:%S");
+            ui.label(format!("{}", ts));
+        });
+        ui.horizontal(|ui| {
+            ui.label("Price Points:");
+            ui.label(format!("{}", dist.price_levels.len()));
+        });
+        ui.separator();
+
+        // Price levels visualization
+        if !dist.price_levels.is_empty() {
+            ui.heading("Price Levels");
+
+            // Find price range for better visualization
             let min_price = dist
                 .price_levels
                 .iter()
-                .map(|p| p.price)
+                .map(|p| p.lower_price)
                 .fold(f64::INFINITY, f64::min);
             let max_price = dist
                 .price_levels
                 .iter()
-                .map(|p| p.price)
+                .map(|p| p.upper_price)
                 .fold(f64::NEG_INFINITY, f64::max);
+
             ui.horizontal(|ui| {
-                ui.label("Tick Count:");
-                ui.label(format!("{}", num_ticks));
                 ui.label("Price Range:");
-                ui.label(format!("{:.8} - {:.8}", min_price, max_price));
+                ui.label(format!("{} - {}", min_price, max_price));
             });
-            ui.separator();
-            if dist.price_levels.is_empty() {
-                ui.colored_label(Color32::YELLOW, "No V3 tick data available.");
-                return;
-            }
-            // Table header
-            Grid::new("v3_tick_table").striped(true).show(ui, |ui| {
-                ui.label(RichText::new("TickIdx").strong());
-                ui.label(RichText::new("TickPrice (1.0001^tick)").strong());
-                ui.label(RichText::new("Price").strong());
-                ui.label(RichText::new("Token0 Liquidity").strong());
-                ui.label(RichText::new("Token1 Liquidity").strong());
-                ui.label(RichText::new("Timestamp").strong());
-                ui.end_row();
-                for tick in &dist.price_levels {
-                    ui.label(format!("{}", tick.tick_idx));
-                    ui.label(format!("{:.8}", tick.tick_price));
-                    ui.label(format!("{:.8}", tick.price));
-                    ui.label(format!("{:.8}", tick.token0_liquidity));
-                    ui.label(format!("{:.8}", tick.token1_liquidity));
-                    ui.label(format!("{}", tick.timestamp.format("%Y-%m-%d %H:%M:%S")));
-                    ui.end_row();
-                }
-            });
-            return;
-        } else if let Some(DistributionKind::V2(dist)) = &distribution.distribution {
-            let heading = match dist.dex.as_str() {
-                "uniswap_v2" => "Uniswap V2 Liquidity Distribution",
-                "uniswap_v3" => "Uniswap V3 Liquidity Distribution",
-                other => &format!("{} Liquidity Distribution", other),
-            };
-            ui.heading(heading);
-            ui.horizontal(|ui| {
-                ui.label("Token0:");
-                ui.label(format!("{} ({})", dist.token0.symbol, dist.token0.address));
-            });
-            ui.horizontal(|ui| {
-                ui.label("Token1:");
-                ui.label(format!("{} ({})", dist.token1.symbol, dist.token1.address));
-            });
-            ui.horizontal(|ui| {
-                ui.label("DEX:");
-                ui.label(&dist.dex);
-            });
-            ui.horizontal(|ui| {
-                ui.label("Chain ID:");
-                ui.label(format!("{}", dist.chain_id));
-            });
-            ui.horizontal(|ui| {
-                ui.label("Timestamp:");
-                let ts = dist.timestamp.format("%Y-%m-%d %H:%M:%S");
-                ui.label(format!("{}", ts));
-            });
-            ui.horizontal(|ui| {
-                ui.label("Price Points:");
-                ui.label(format!("{}", dist.price_levels.len()));
-            });
-            ui.separator();
 
-            // Price levels visualization
-            if !dist.price_levels.is_empty() {
-                ui.heading("Price Levels");
-
-                // Find price range for better visualization
-                let min_price = dist
-                    .price_levels
-                    .iter()
-                    .map(|p| p.lower_price)
-                    .fold(f64::INFINITY, f64::min);
-                let max_price = dist
-                    .price_levels
-                    .iter()
-                    .map(|p| p.upper_price)
-                    .fold(f64::NEG_INFINITY, f64::max);
-
-                ui.horizontal(|ui| {
-                    ui.label("Price Range:");
-                    ui.label(format!("{} - {}", min_price, max_price));
+            // Show price levels in a more organized way
+            for (i, level) in dist.price_levels.iter().enumerate() {
+                ui.collapsing(format!("Price Level {}: {}", i + 1, level.lower_price), |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Price:");
+                        ui.label(format!("{}", level.lower_price));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Token0 Liquidity:");
+                        ui.label(format!("{}", level.token0_liquidity));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Token1 Liquidity:");
+                        ui.label(format!("{}", level.token1_liquidity));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Total Liquidity:");
+                        ui.label(format!(
+                            "{}",
+                            level.token0_liquidity + level.token1_liquidity
+                        ));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Timestamp:");
+                        let ts = level.timestamp.format("%Y-%m-%d %H:%M:%S");
+                        ui.label(format!("{}", ts));
+                    });
                 });
+            }
 
-                // Show price levels in a more organized way
-                if dist.dex == "uniswap_v3" {
-                    // Only show V3 price levels with all info if available
-                    if let Some(v3_levels) = self.v3_price_levels.as_ref() {
-                        ui.heading("Uniswap V3 Populated Price Levels");
-                        egui::ScrollArea::vertical().show(ui, |ui| {
-                            for level in v3_levels {
-                                ui.collapsing(
-                                    format!("Tick {} | Price {:.8}", level.tick_idx, level.price),
-                                    |ui| {
-                                        ui.label(format!("Tick Index: {}", level.tick_idx));
-                                        ui.label(format!(
-                                            "Tick Price (1.0001^tick): {:.8}",
-                                            level.tick_price
-                                        ));
-                                        ui.label(format!("Price: {:.8}", level.price));
-                                        ui.label(format!(
-                                            "Token0 Liquidity: {:.8}",
-                                            level.token0_liquidity
-                                        ));
-                                        ui.label(format!(
-                                            "Token1 Liquidity: {:.8}",
-                                            level.token1_liquidity
-                                        ));
-                                        ui.label(format!("Timestamp: {}", level.timestamp));
-                                    },
-                                );
-                            }
-                        });
-                    } else {
-                        ui.label("No Uniswap V3 price level data loaded.");
-                    }
-                } else {
-                    for (i, level) in dist.price_levels.iter().enumerate() {
-                        ui.collapsing(format!("Price Level {}: {}", i + 1, level.lower_price), |ui| {
-                            ui.horizontal(|ui| {
-                                ui.label("Price:");
-                                ui.label(format!("{}", level.lower_price));
-                            });
-                            ui.horizontal(|ui| {
-                                ui.label("Token0 Liquidity:");
-                                ui.label(format!("{}", level.token0_liquidity));
-                            });
-                            ui.horizontal(|ui| {
-                                ui.label("Token1 Liquidity:");
-                                ui.label(format!("{}", level.token1_liquidity));
-                            });
-                            ui.horizontal(|ui| {
-                                ui.label("Total Liquidity:");
-                                ui.label(format!(
-                                    "{}",
-                                    level.token0_liquidity + level.token1_liquidity
-                                ));
-                            });
-                            ui.horizontal(|ui| {
-                                ui.label("Timestamp:");
-                                let ts = level.timestamp.format("%Y-%m-%d %H:%M:%S");
-                                ui.label(format!("{}", ts));
-                            });
-                        });
-                    }
+            // Add a simple chart visualization
+            if dist.price_levels.len() > 1 {
+                ui.separator();
+                ui.heading("Liquidity Chart");
+
+                let chart_height = 150.0;
+                let chart_width = ui.available_width();
+
+                let (response, painter) = ui
+                    .allocate_painter([chart_width, chart_height].into(), egui::Sense::hover());
+
+                // Simple bar chart of liquidity vs price
+                let rect = response.rect;
+                let price_range = max_price - min_price;
+                let max_liquidity = dist
+                    .price_levels
+                    .iter()
+                    .map(|p| p.token0_liquidity + p.token1_liquidity)
+                    .fold(0.0, f64::max);
+
+                for level in &dist.price_levels {
+                    let x = rect.left()
+                        + ((level.lower_price - min_price) / price_range * rect.width() as f64)
+                            as f32;
+                    let height = ((level.token0_liquidity + level.token1_liquidity)
+                        / max_liquidity
+                        * rect.height() as f64) as f32;
+                    let y = rect.bottom() - height;
+
+                    let bar_rect =
+                        egui::Rect::from_min_size([x, y].into(), [2.0_f32, height].into());
+
+                    painter.rect_filled(bar_rect, 0.0, Color32::from_rgb(0, 150, 0));
                 }
-
-                // Add a simple chart visualization
-                if dist.price_levels.len() > 1 {
-                    ui.separator();
-                    ui.heading("Liquidity Chart");
-
-                    let chart_height = 150.0;
-                    let chart_width = ui.available_width();
-
-                    let (response, painter) = ui
-                        .allocate_painter([chart_width, chart_height].into(), egui::Sense::hover());
-
-                    // Simple bar chart of liquidity vs price
-                    let rect = response.rect;
-                    let price_range = max_price - min_price;
-                    let max_liquidity = dist
-                        .price_levels
-                        .iter()
-                        .map(|p| p.token0_liquidity + p.token1_liquidity)
-                        .fold(0.0, f64::max);
-
-                    for level in &dist.price_levels {
-                        let x = rect.left()
-                            + ((level.lower_price - min_price) / price_range * rect.width() as f64)
-                                as f32;
-                        let height = ((level.token0_liquidity + level.token1_liquidity)
-                            / max_liquidity
-                            * rect.height() as f64) as f32;
-                        let y = rect.bottom() - height;
-
-                        let bar_rect =
-                            egui::Rect::from_min_size([x, y].into(), [2.0_f32, height].into());
-
-                        painter.rect_filled(bar_rect, 0.0, Color32::from_rgb(0, 150, 0));
-                    }
-                }
-            } else {
-                ui.label("No price levels available");
             }
         } else {
-            if self.selected_distribution_dex == "uniswap_v3" {
-                ui.label("No Uniswap V3 distribution data found. Please run the indexer or wait for data to be indexed.");
-            } else {
-                ui.label("No distribution data");
-            }
+            ui.label("No price levels available");
         }
     }
 }
