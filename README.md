@@ -90,7 +90,7 @@ By structuring and providing this data, we can democratize access to valuable tr
 
 ## Running the Application
 
-The project provides two main binaries:
+The project provides three main binaries:
 
 ### Indexer
 
@@ -125,14 +125,14 @@ This will launch the graphical interface for visualizing buy/sell walls.
 For development, you can run both the API server and GUI application in separate terminals:
 
 ```bash
-# Terminal 1 - Indexer
-cargo run --bin tel-indexer
+chmod +x scripts/run-all.sh
+./scripts/run-all.sh
+```
 
-# Terminal 2 - API Server
-cargo run --bin tel-api
+For test mode, run:
 
-# Terminal 3 - GUI Application
-cargo run --bin tel-ui
+```bash
+./scripts/run-all.sh test
 ```
 
 ## API Documentation
@@ -143,6 +143,7 @@ cargo run --bin tel-ui
 - `GET /v1/liquidity/walls/:token0/:token1` - Get liquidity walls for a token pair
 - `GET /v1/tokens/:chain_id/:address` - Get token information
 - `GET /v1/pools/:dex/:chain_id` - Get pools for a specific DEX on a chain
+- `GET /v1/chains/:chain_id/pools` - Get all pools for a specific chain
 
 ## Configuration
 

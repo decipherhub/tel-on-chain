@@ -1,4 +1,4 @@
-use crate::models::{LiquidityDistribution, LiquidityWall, PriceLiquidity};
+use crate::models::{LiquidityDistribution, LiquidityWall, PriceLiquidity, Side};
 use std::collections::HashMap;
 
 /// Identifies liquidity walls from a set of liquidity distributions
@@ -47,11 +47,11 @@ pub fn group_price_levels(
     // Find min and max prices
     let min_price = price_levels
         .iter()
-        .map(|p| p.price)
+        .map(|p| p.lower_price)
         .fold(f64::INFINITY, f64::min);
     let max_price = price_levels
         .iter()
-        .map(|p| p.price)
+        .map(|p| p.upper_price)
         .fold(f64::NEG_INFINITY, f64::max);
 
     // Calculate the range size
@@ -66,13 +66,13 @@ pub fn group_price_levels(
         // Filter price levels in this range
         let levels_in_range: Vec<_> = price_levels
             .iter()
-            .filter(|p| p.price >= group_min && p.price < group_max)
+            .filter(|p| p.lower_price >= group_min && p.upper_price < group_max)
             .collect();
 
         if !levels_in_range.is_empty() {
             // Average price in the range
             let avg_price: f64 =
-                levels_in_range.iter().map(|p| p.price).sum::<f64>() / levels_in_range.len() as f64;
+                levels_in_range.iter().map(|p| p.lower_price).sum::<f64>() / levels_in_range.len() as f64;
 
             // Sum of liquidity in the range
             let token0_liquidity: f64 = levels_in_range.iter().map(|p| p.token0_liquidity).sum();
@@ -86,7 +86,9 @@ pub fn group_price_levels(
                 .unwrap_or_else(chrono::Utc::now);
 
             grouped.push(PriceLiquidity {
-                price: avg_price,
+                side: Side::Buy,
+                lower_price: avg_price,
+                upper_price: avg_price,
                 token0_liquidity,
                 token1_liquidity,
                 timestamp,

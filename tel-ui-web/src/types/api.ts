@@ -42,4 +42,16 @@ export interface LiquidityWallsQuery {
 export interface ApiError {
   message: string;
   code: number;
+}
+
+export interface Pool {
+  address: string;
+  dex: string;
+  chain_id: number;
+  tokens: Token[];
+  creation_block: number;
+  creation_timestamp: string;
+  last_updated_block: number;
+  last_updated_timestamp: string;
+  fee: number;
 } 

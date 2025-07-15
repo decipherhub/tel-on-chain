@@ -2,7 +2,16 @@
   "permissions": {
     "allow": [
       "Bash(chmod:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(curl:*)",
+      "Bash(kill:*)",
+      "Bash(cargo check:*)",
+      "Bash(pkill:*)",
+      "Bash(cargo doc:*)",
+      "Bash(/dev/null)",
+      "Bash(cargo build:*)",
+      "Bash(cargo run:*)",
+      "Bash(timeout 10 cargo run --bin tel-api)"
     ],
     "deny": []
   }

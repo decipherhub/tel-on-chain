@@ -1,4 +1,10 @@
-use alloy_primitives::Address;
+use tel_core::config::Config;
+use tel_core::error::Error;
+use tel_core::models::{LiquidityDistribution, LiquidityWallsResponse, LiquidityWall, Side, Token, Pool};
+use tel_core::providers::ProviderManager;
+use tel_core::storage::Storage;
+use tel_core::storage::SqliteStorage;
+use alloy_primitives::{Address, hex};
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json};
@@ -6,16 +12,47 @@ use axum::routing::get;
 use axum::Router;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
+use std::str::FromStr;
 use std::sync::Arc;
-use tel_core::config::Config;
-use tel_core::core::liquidity::identify_walls;
-use tel_core::error::Error;
-use tel_core::models::{LiquidityWallsResponse, Token};
-use tel_core::providers::ProviderManager;
-use tel_core::storage::SqliteStorage;
-use tel_core::storage::Storage;
-use tower_http::cors::{Any, CorsLayer};
-use tracing::{debug, info, warn};
+use tracing::{info, warn, debug, error};
+use std::collections::HashMap;
+use tower_http::cors::CorsLayer;
+use tower_http::cors::Any;
+
+/// Parse an address string in a more lenient way
+fn parse_address(addr_str: &str) -> Result<Address, ApiError> {
+    // First try the standard parser
+    if let Ok(addr) = Address::from_str(addr_str) {
+        return Ok(addr);
+    }
+    
+    // If that fails, try to parse as hex without checksum validation
+    let addr_str = addr_str.strip_prefix("0x").unwrap_or(addr_str);
+    if addr_str.len() != 40 {
+        return Err(ApiError {
+            message: "Address must be 40 hex characters".to_string(),
+            code: 400,
+        });
+    }
+    
+    // Parse as hex bytes
+    let bytes = hex::decode(addr_str).map_err(|_| ApiError {
+        message: "Invalid hex address".to_string(),
+        code: 400,
+    })?;
+    
+    if bytes.len() != 20 {
+        return Err(ApiError {
+            message: "Address must be 20 bytes".to_string(),
+            code: 400,
+        });
+    }
+    
+    // Create address from bytes
+    let mut addr_bytes = [0u8; 20];
+    addr_bytes.copy_from_slice(&bytes);
+    Ok(Address::from(addr_bytes))
+}
 
 /// Query parameters for liquidity walls endpoint
 #[derive(Debug, Deserialize)]
@@ -85,6 +122,7 @@ fn routes(state: Arc<AppState>) -> Router {
         )
         .route("/v1/tokens/:chain_id/:address", get(get_token_info))
         .route("/v1/pools/:dex/:chain_id", get(get_pools_by_dex))
+        .route("/v1/chains/:chain_id/pools", get(get_all_pools))
         .with_state(state)
 }
 
@@ -100,14 +138,9 @@ async fn get_liquidity_walls(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<LiquidityWallsResponse>, ApiError> {
     // Validate addresses
-    let token0_address = Address::parse_checksummed(&token0_addr, None).map_err(|e| ApiError {
-        message: format!("Invalid token0 address format: {}", e),
-        code: 400,
-    })?;
-    let token1_address = Address::parse_checksummed(&token1_addr, None).map_err(|e| ApiError {
-        message: format!("Invalid token1 address format: {}", e),
-        code: 400,
-    })?;
+    // Parse addresses with more lenient validation
+    let token0_address = parse_address(&token0_addr)?;
+    let token1_address = parse_address(&token1_addr)?;
 
     let chain_id = params.chain_id.unwrap_or(1);
 
@@ -129,8 +162,8 @@ async fn get_liquidity_walls(
 
     // Get liquidity distributions from database
     let dex_filter = params.dex.as_deref();
-    let mut all_distributions = Vec::new();
-
+    let mut all_distributions: Vec<LiquidityDistribution> = Vec::new();
+    
     // Define supported DEXes
     let dexes = if let Some(dex) = dex_filter {
         vec![dex.to_string()]
@@ -144,7 +177,7 @@ async fn get_liquidity_walls(
         ]
     };
 
-    // Collect liquidity distributions from all relevant DEXes
+    // TODO: Collect and merge liquidity distributions from all relevant DEXes
     for dex in dexes {
         match state.storage.get_liquidity_distribution(
             token0_address,
@@ -153,41 +186,53 @@ async fn get_liquidity_walls(
             chain_id,
         ) {
             Ok(Some(distribution)) => {
-                debug!("Found liquidity distribution for {} DEX", dex);
+                info!("Found liquidity distribution for {} DEX", dex);
                 all_distributions.push(distribution);
             }
             Ok(None) => {
-                debug!("No liquidity distribution found for {} DEX", dex);
+                info!("No liquidity distribution found for {} DEX", dex);
             }
             Err(e) => {
-                warn!("Error getting liquidity distribution for {}: {}", dex, e);
+                error!("Error getting liquidity distribution for {}: {}", dex, e);
             }
         }
     }
 
-    // Calculate current price (use average from distributions or fallback)
-    let current_price = if !all_distributions.is_empty() {
-        all_distributions
-            .iter()
-            .filter_map(|d| d.price_levels.last())
-            .map(|pl| pl.price)
-            .sum::<f64>()
-            / all_distributions.len() as f64
-    } else {
-        // Fallback price calculation or default
-        1625.75
-    };
+    if all_distributions.is_empty() {
+        return Err(ApiError {
+            message: "No liquidity distributions found".to_string(),
+            code: 404,
+        });
+    }
 
-    // Convert distributions to liquidity walls
-    let (buy_walls, sell_walls) = if !all_distributions.is_empty() {
-        // Define price ranges for wall identification
-        let price_ranges = generate_price_ranges(current_price, 10);
-        identify_walls(&all_distributions, &price_ranges)
-    } else {
-        // Return empty walls if no data found
-        warn!("No liquidity distributions found, returning empty walls");
-        (Vec::new(), Vec::new())
-    };
+    debug!("distributions: {:#?}", all_distributions);
+
+    let distribution = all_distributions.first().unwrap();
+
+    let current_price = distribution.current_price;
+
+    let buy_walls = distribution
+        .price_levels
+        .iter()
+        .filter(|d| d.side == Side::Buy)
+        .map(|d| LiquidityWall {
+            price_lower: d.lower_price,
+            price_upper: d.upper_price,
+            liquidity_value: d.token1_liquidity,
+            dex_sources: HashMap::new(),
+        })
+        .collect();
+    let sell_walls = distribution
+        .price_levels
+        .iter()
+        .filter(|d| d.side == Side::Sell)
+        .map(|d| LiquidityWall {
+            price_lower: d.lower_price,
+            price_upper: d.upper_price,
+            liquidity_value: d.token0_liquidity * (d.upper_price + d.lower_price) / 2.0, // displayed in token1 value
+            dex_sources: HashMap::new(),
+        })
+        .collect();
 
     let response = LiquidityWallsResponse {
         token0,
@@ -201,37 +246,12 @@ async fn get_liquidity_walls(
     Ok(Json(response))
 }
 
-/// Generate price ranges around current price for wall identification
-fn generate_price_ranges(current_price: f64, num_ranges: usize) -> Vec<(f64, f64)> {
-    let mut ranges = Vec::new();
-    let step_size = current_price * 0.05; // 5% steps
-
-    for i in 0..num_ranges {
-        let offset = (i as f64 + 1.0) * step_size;
-
-        // Buy walls below current price
-        let buy_lower = current_price - offset - step_size;
-        let buy_upper = current_price - offset;
-        ranges.push((buy_lower, buy_upper));
-
-        // Sell walls above current price
-        let sell_lower = current_price + offset;
-        let sell_upper = current_price + offset + step_size;
-        ranges.push((sell_lower, sell_upper));
-    }
-
-    ranges
-}
-
 /// Get token information
 async fn get_token_info(
     Path((chain_id, address_str)): Path<(u64, String)>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Token>, ApiError> {
-    let address = Address::parse_checksummed(&address_str, None).map_err(|e| ApiError {
-        message: format!("Invalid address format: {}", e),
-        code: 400,
-    })?;
+    let address = parse_address(&address_str)?;
 
     let token = state
         .storage
@@ -260,6 +280,32 @@ async fn get_pools_by_dex(
             Ok(Json(Vec::new()))
         }
     }
+}
+
+/// Get all pools for a chain ID
+async fn get_all_pools(
+    Path(chain_id): Path<u64>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Vec<Pool>>, ApiError> {
+    // Get pools from all supported DEXes
+    let dexes = vec!["uniswap_v3", "uniswap_v2", "sushiswap"];
+    let mut all_pools = Vec::new();
+    
+    for dex in dexes {
+        match state.storage.get_pools_by_dex(dex, chain_id) {
+            Ok(pools) => {
+                all_pools.extend(pools);
+            }
+            Err(e) => {
+                warn!("Error getting pools for DEX {}: {}", dex, e);
+            }
+        }
+    }
+    
+    // Sort pools by creation timestamp (newest first)
+    all_pools.sort_by(|a, b| b.creation_timestamp.cmp(&a.creation_timestamp));
+    
+    Ok(Json(all_pools))
 }
 
 /// Run the API server
