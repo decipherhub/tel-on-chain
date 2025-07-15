@@ -287,24 +287,90 @@ impl Storage for SqliteStorage {
     /// Currently unimplemented; always returns an empty vector.
     fn get_pools_by_dex(&self, dex: &str, chain_id: u64) -> Result<Vec<Pool>> {
         let conn = self.conn.lock().unwrap();
+        
+        // Use a single query with JOINs to get all required data
         let mut stmt = conn
-            .prepare("SELECT address FROM pools WHERE dex = ?1 AND chain_id = ?2")
+            .prepare("SELECT p.address, p.chain_id, p.dex, p.token0_address, p.token1_address, p.fee,
+                            t0.symbol as token0_symbol, t0.name as token0_name, t0.decimals as token0_decimals,
+                            t1.symbol as token1_symbol, t1.name as token1_name, t1.decimals as token1_decimals
+                     FROM pools p
+                     LEFT JOIN tokens t0 ON p.token0_address = t0.address AND p.chain_id = t0.chain_id
+                     LEFT JOIN tokens t1 ON p.token1_address = t1.address AND p.chain_id = t1.chain_id
+                     WHERE p.dex = ?1 AND p.chain_id = ?2")
             .map_err(|e| Error::DatabaseError(format!("prepare get_pools_by_dex: {e}")))?;
+        
         let mut rows = stmt
             .query(params![dex, chain_id])
             .map_err(|e| Error::DatabaseError(format!("query get_pools_by_dex: {e}")))?;
+        
         let mut pools = Vec::new();
+        
         while let Some(row) = rows
             .next()
             .map_err(|e| Error::DatabaseError(format!("row get_pools_by_dex: {e}")))?
         {
             let address: String = row.get(0)?;
+            let chain_id: u64 = row.get(1)?;
+            let dex: String = row.get(2)?;
+            let token0_addr: String = row.get(3)?;
+            let token1_addr: String = row.get(4)?;
+            let fee: u32 = row.get(5)?;
+            
+            // Parse addresses
             let address = Address::from_str(&address)
-                .map_err(|e| Error::DatabaseError(format!("parse address: {e}")))?;
-            if let Some(pool) = self.get_pool(address)? {
-                pools.push(pool);
+                .map_err(|e| Error::DatabaseError(format!("parse pool address: {e}")))?;
+            let token0_address = Address::from_str(&token0_addr)
+                .map_err(|e| Error::DatabaseError(format!("parse token0 address: {e}")))?;
+            let token1_address = Address::from_str(&token1_addr)
+                .map_err(|e| Error::DatabaseError(format!("parse token1 address: {e}")))?;
+            
+            // Get token data from JOIN results
+            let token0_symbol: Option<String> = row.get(6)?;
+            let token0_name: Option<String> = row.get(7)?;
+            let token0_decimals: Option<u8> = row.get(8)?;
+            let token1_symbol: Option<String> = row.get(9)?;
+            let token1_name: Option<String> = row.get(10)?;
+            let token1_decimals: Option<u8> = row.get(11)?;
+            
+            // Skip pools where token info is missing
+            if token0_symbol.is_none() || token1_symbol.is_none() {
+                continue;
             }
+            
+            let token0 = Token {
+                address: token0_address,
+                symbol: token0_symbol.unwrap(),
+                name: token0_name.unwrap(),
+                decimals: token0_decimals.unwrap(),
+                chain_id,
+            };
+            
+            let token1 = Token {
+                address: token1_address,
+                symbol: token1_symbol.unwrap(),
+                name: token1_name.unwrap(),
+                decimals: token1_decimals.unwrap(),
+                chain_id,
+            };
+            
+            // Create default timestamps (same as get_pool)
+            let default_dt = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc);
+            
+            let pool = Pool {
+                address,
+                dex,
+                chain_id,
+                tokens: vec![token0, token1],
+                creation_block: 0,
+                creation_timestamp: default_dt,
+                last_updated_block: 0,
+                last_updated_timestamp: default_dt,
+                fee: fee.into(),
+            };
+            
+            pools.push(pool);
         }
+        
         Ok(pools)
     }
 

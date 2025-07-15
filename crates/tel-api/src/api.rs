@@ -1,10 +1,10 @@
 use tel_core::config::Config;
 use tel_core::error::Error;
-use tel_core::models::{LiquidityDistribution, LiquidityWallsResponse, LiquidityWall, Side, Token};
+use tel_core::models::{LiquidityDistribution, LiquidityWallsResponse, LiquidityWall, Side, Token, Pool};
 use tel_core::providers::ProviderManager;
 use tel_core::storage::Storage;
 use tel_core::storage::SqliteStorage;
-use alloy_primitives::Address;
+use alloy_primitives::{Address, hex};
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json};
@@ -12,11 +12,47 @@ use axum::routing::get;
 use axum::Router;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
+use std::str::FromStr;
 use std::sync::Arc;
 use tracing::{info, warn, debug, error};
 use std::collections::HashMap;
 use tower_http::cors::CorsLayer;
 use tower_http::cors::Any;
+
+/// Parse an address string in a more lenient way
+fn parse_address(addr_str: &str) -> Result<Address, ApiError> {
+    // First try the standard parser
+    if let Ok(addr) = Address::from_str(addr_str) {
+        return Ok(addr);
+    }
+    
+    // If that fails, try to parse as hex without checksum validation
+    let addr_str = addr_str.strip_prefix("0x").unwrap_or(addr_str);
+    if addr_str.len() != 40 {
+        return Err(ApiError {
+            message: "Address must be 40 hex characters".to_string(),
+            code: 400,
+        });
+    }
+    
+    // Parse as hex bytes
+    let bytes = hex::decode(addr_str).map_err(|_| ApiError {
+        message: "Invalid hex address".to_string(),
+        code: 400,
+    })?;
+    
+    if bytes.len() != 20 {
+        return Err(ApiError {
+            message: "Address must be 20 bytes".to_string(),
+            code: 400,
+        });
+    }
+    
+    // Create address from bytes
+    let mut addr_bytes = [0u8; 20];
+    addr_bytes.copy_from_slice(&bytes);
+    Ok(Address::from(addr_bytes))
+}
 
 /// Query parameters for liquidity walls endpoint
 #[derive(Debug, Deserialize)]
@@ -86,6 +122,7 @@ fn routes(state: Arc<AppState>) -> Router {
         )
         .route("/v1/tokens/:chain_id/:address", get(get_token_info))
         .route("/v1/pools/:dex/:chain_id", get(get_pools_by_dex))
+        .route("/v1/chains/:chain_id/pools", get(get_all_pools))
         .with_state(state)
 }
 
@@ -101,14 +138,9 @@ async fn get_liquidity_walls(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<LiquidityWallsResponse>, ApiError> {
     // Validate addresses
-    let token0_address = Address::parse_checksummed(&token0_addr, None).map_err(|e| ApiError {
-        message: format!("Invalid token0 address format: {}", e),
-        code: 400,
-    })?;
-    let token1_address = Address::parse_checksummed(&token1_addr, None).map_err(|e| ApiError {
-        message: format!("Invalid token1 address format: {}", e),
-        code: 400,
-    })?;
+    // Parse addresses with more lenient validation
+    let token0_address = parse_address(&token0_addr)?;
+    let token1_address = parse_address(&token1_addr)?;
 
     let chain_id = params.chain_id.unwrap_or(1);
 
@@ -219,10 +251,7 @@ async fn get_token_info(
     Path((chain_id, address_str)): Path<(u64, String)>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Token>, ApiError> {
-    let address = Address::parse_checksummed(&address_str, None).map_err(|e| ApiError {
-        message: format!("Invalid address format: {}", e),
-        code: 400,
-    })?;
+    let address = parse_address(&address_str)?;
 
     let token = state
         .storage
@@ -251,6 +280,32 @@ async fn get_pools_by_dex(
             Ok(Json(Vec::new()))
         }
     }
+}
+
+/// Get all pools for a chain ID
+async fn get_all_pools(
+    Path(chain_id): Path<u64>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Vec<Pool>>, ApiError> {
+    // Get pools from all supported DEXes
+    let dexes = vec!["uniswap_v3", "uniswap_v2", "sushiswap"];
+    let mut all_pools = Vec::new();
+    
+    for dex in dexes {
+        match state.storage.get_pools_by_dex(dex, chain_id) {
+            Ok(pools) => {
+                all_pools.extend(pools);
+            }
+            Err(e) => {
+                warn!("Error getting pools for DEX {}: {}", dex, e);
+            }
+        }
+    }
+    
+    // Sort pools by creation timestamp (newest first)
+    all_pools.sort_by(|a, b| b.creation_timestamp.cmp(&a.creation_timestamp));
+    
+    Ok(Json(all_pools))
 }
 
 /// Run the API server

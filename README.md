@@ -143,6 +143,7 @@ For test mode, run:
 - `GET /v1/liquidity/walls/:token0/:token1` - Get liquidity walls for a token pair
 - `GET /v1/tokens/:chain_id/:address` - Get token information
 - `GET /v1/pools/:dex/:chain_id` - Get pools for a specific DEX on a chain
+- `GET /v1/chains/:chain_id/pools` - Get all pools for a specific chain
 
 ## Configuration
 

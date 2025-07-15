@@ -271,6 +271,47 @@ GET /pools/uniswap_v3/1
 ]
 ```
 
+### Get All Pools by Chain
+
+```
+GET /chains/:chain_id/pools
+```
+
+Returns all pools available for a specific chain across all DEXes.
+
+**Path Parameters:**
+
+- `chain_id`: The chain ID (e.g., 1 for Ethereum mainnet)
+
+**Example Request:**
+
+```
+GET /chains/1/pools
+```
+
+**Example Response:**
+
+```json
+[
+  {
+    "address": "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640",
+    "dex": "uniswap_v3",
+    "chain_id": 1,
+    "token0": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+    "token1": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+    "creation_timestamp": "2023-05-01T12:34:56Z"
+  },
+  {
+    "address": "0x8ad599c3a0ff1de082011efddc58f1908eb6e6d8",
+    "dex": "uniswap_v2",
+    "chain_id": 1,
+    "token0": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+    "token1": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+    "creation_timestamp": "2023-04-30T08:22:15Z"
+  }
+]
+```
+
 ## Error Responses
 
 The API returns standard HTTP status codes to indicate the success or failure of a request.
