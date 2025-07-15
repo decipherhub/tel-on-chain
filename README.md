@@ -90,7 +90,7 @@ By structuring and providing this data, we can democratize access to valuable tr
 
 ## Running the Application
 
-The project provides two main binaries:
+The project provides three main binaries:
 
 ### Indexer
 
@@ -125,14 +125,14 @@ This will launch the graphical interface for visualizing buy/sell walls.
 For development, you can run both the API server and GUI application in separate terminals:
 
 ```bash
-# Terminal 1 - Indexer
-cargo run --bin tel-indexer
+chmod +x scripts/run-all.sh
+./scripts/run-all.sh
+```
 
-# Terminal 2 - API Server
-cargo run --bin tel-api
+For test mode, run:
 
-# Terminal 3 - GUI Application
-cargo run --bin tel-ui
+```bash
+./scripts/run-all.sh test
 ```
 
 ## API Documentation
