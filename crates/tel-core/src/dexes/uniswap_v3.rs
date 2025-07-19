@@ -141,47 +141,27 @@ impl DexProtocol for UniswapV3 {
     }
 
     async fn get_pool(&self, pool_address: Address) -> Result<Pool> {
-        // Mock implementation
-        let dummy_token0 = Token {
-            address: Address::ZERO,
-            symbol: "MOCK0".to_string(),
-            name: "Mock Token 0".to_string(),
-            decimals: 18,
-            chain_id: self.chain_id(),
-        };
-        let dummy_token1 = Token {
-            address: Address::ZERO,
-            symbol: "MOCK1".to_string(),
-            name: "Mock Token 1".to_string(),
-            decimals: 18,
-            chain_id: self.chain_id(),
-        };
-
-        Ok(Pool {
-            address: pool_address,
-            dex: self.name().into(),
-            chain_id: self.chain_id(),
-            tokens: vec![dummy_token0, dummy_token1],
-            creation_block: 0,
-            creation_timestamp: Utc::now(),
-            last_updated_block: 0,
-            last_updated_timestamp: Utc::now(),
-            fee: 3000,
-        })
+        let pool_result = get_pool_async(self.storage.clone(), pool_address).await;
+        match pool_result {
+            Ok(Some(pool)) => Ok(pool),
+            Ok(None) => Err(Error::DexError(format!(
+                "Pool not found: {}",
+                pool_address
+            ))),
+            Err(e) => Err(e),
+        }
     }
 
     async fn get_all_pools(&self) -> Result<Vec<Pool>> {
         let provider = self.provider.provider();
-        //let latest_block: u64 = provider.get_block_number().await.map_err(|e| Error::ProviderError(format!("get_block_number: {}", e)))?;
-        let latest_block = 12500000; // For testing, replace with actual block number retrieval
-        //let mut from_block = 12469621;
-        let mut from_block = 12489621;
-
+        let latest_block: u64 = provider.get_block_number().await.map_err(|e| Error::ProviderError(format!("get_block_number: {}", e)))?;
+        //let latest_block = 16669621; // For testing, replace with actual block number retrieval
+        let mut from_block = 12469621;
         let mut all_logs = Vec::new();
         let mut i = 0;
-        while from_block < latest_block && i < 10{
+        while from_block < latest_block {
             let to_block = (from_block + 9999).min(latest_block);
-            //info!("Fetching logs from block {} to {}", from_block, to_block);
+            info!("Fetching logs from block {} to {}", from_block, to_block);
             let filter = self.build_pool_created_filter(from_block, to_block);
             let logs = self.get_logs(filter).await?;
             //info!("Found {} logs in this range", logs.len());
@@ -190,12 +170,12 @@ impl DexProtocol for UniswapV3 {
             i += 1;
         }
 
-        //info!("Found a total of {} pools", all_logs.len());
+        info!("Found a total of {} pools", all_logs.len());
 
         let mut pools = Vec::with_capacity(all_logs.len());
         let mut pools_count = 0;
         for log in &all_logs {
-            if pools_count >= 10 { break; }
+            //if pools_count >= 10 { break; }
             //info!("Processing log: topics={:?}, data={:?}", log.topics(), log.data());
             // topics: [topic0, token0, token1, fee]
             if log.topics().len() < 4 { continue; }
@@ -209,8 +189,20 @@ impl DexProtocol for UniswapV3 {
             let data_slice: &[u8] = log.data().data.as_ref();
             if data_slice.len() < 64 { continue; }
             let pool_addr = Address::from_slice(&data_slice[44..64]);
-            let tok0 = self.fetch_or_load_token(token0).await?;
-            let tok1 = self.fetch_or_load_token(token1).await?;
+            let tok0 = match self.fetch_or_load_token(token0).await {
+                Ok(token) => token,
+                Err(e) => {
+                    tracing::error!("Failed to fetch token {}: {}", token0, e);
+                    continue;
+                }
+            };
+            let tok1 = match self.fetch_or_load_token(token1).await {
+                Ok(token) => token,
+                Err(e) => {
+                    tracing::error!("Failed to fetch token {}: {}", token1, e);
+                    continue;
+                }
+            };
             let block_number: u64 = log.block_number.unwrap_or(0);
             let pool = Pool {
                 address: pool_addr,
@@ -223,8 +215,13 @@ impl DexProtocol for UniswapV3 {
                 last_updated_timestamp: Utc::now(),
                 fee: fee as u64,
             };
-            save_pool_async(self.storage.clone(), pool.clone()).await?;
+            let pool_address = pool.address;
+            if let Err(e) = save_pool_async(self.storage.clone(), pool.clone()).await {
+                tracing::error!("Failed to save pool {}: {}", pool_address, e);
+                continue;
+            };
             pools.push(pool);
+            info!("Pool {}: token0={}, token1={}, fee={}", pool_address, token0, token1, fee);
             pools_count += 1;
         }
         Ok(pools)

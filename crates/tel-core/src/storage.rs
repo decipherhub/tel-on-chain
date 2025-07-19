@@ -231,7 +231,6 @@ impl Storage for SqliteStorage {
                 Err(e) => return Err(Error::DatabaseError(format!("query_row get_pool: {e}"))),
             };
 
-        // 3. token0, token1 정보 읽기
         let mut token_stmt = conn
             .prepare(
                 "SELECT address, chain_id, name, symbol, decimals
@@ -266,7 +265,6 @@ impl Storage for SqliteStorage {
             })
             .map_err(|e| Error::DatabaseError(format!("query_row token1: {e}")))?;
 
-        // chrono::DateTime<Utc> 기본값 (1970-01-01T00:00:00Z)
         let default_dt = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc);
 
         Ok(Some(Pool {
