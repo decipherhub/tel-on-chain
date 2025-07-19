@@ -79,41 +79,73 @@ impl Indexer {
         info!("Starting indexer...");
         let interval = Duration::from_secs(self.config.indexer.interval_secs);
         let mut interval_timer = time::interval(interval);
+        
+        //TODO
+        // get_all_pools should take latest block as an argument 
+        // because we want to fetch all pools from the latest block in real time
+        // but now, we don't have latest block information to fetch real time pools
+        // for now, we get all pools from db, so I comment out all this logic in unfetch mode
 
-        loop {
-            interval_timer.tick().await;
-            info!("Indexer cycle running");
+        // loop {
+        //     interval_timer.tick().await;
+        //     info!("Indexer cycle running");
+            
+        //     // Process each configured DEX
+        //     for (dex_name, dex) in &self.dexes {
+        //         info!("Processing DEX: {}", dex_name);
 
-            // Process each configured DEX
-            for (dex_name, dex) in &self.dexes {
-                info!("Processing DEX: {}", dex_name);
+        //         // Get pools for this DEX
+        //         match dex.get_all_pools().await {
+        //             Ok(pools) => {
+        //                 info!("Found {} pools for {}", pools.len(), dex_name);
+        //                 for pool in pools {
+        //                     match self.process_pool(&pool).await {
+        //                         Ok(_) => debug!("Processed pool {} on {}", pool.address, pool.dex),
+        //                         Err(e) => warn!(
+        //                             "Failed to process pool {} on {}: {}",
+        //                             pool.address, pool.dex, e
+        //                         ),
+        //                     }
+        //                 }
+        //             }
+        //             Err(e) => {
+        //                 warn!("Failed to get pools for {}: {}", dex_name, e);
+        //             }
+        //         }
+        //     }
+        // }
 
-                // Get pools for this DEX
-                let pools_result = if test_mode && dex_name == "uniswap_v3" {
-                    dex.get_all_pools_test().await
-                } else {
-                    dex.get_all_pools().await
-                };
+        // Return a dummy Ok result for now
+        Ok(())
+    }
 
-                match pools_result {
-                    Ok(pools) => {
-                        info!("Found {} pools for {}", pools.len(), dex_name);
-                        for pool in pools {
-                            match self.process_pool(&pool).await {
-                                Ok(_) => debug!("Processed pool {} on {}", pool.address, pool.dex),
-                                Err(e) => warn!(
-                                    "Failed to process pool {} on {}: {}",
-                                    pool.address, pool.dex, e
-                                ),
-                            }
+    pub async fn fetch(&self) -> Result<(), Error> {
+        info!("Starting indexer fetch mode...");
+
+        // Fetch all pools from each DEX
+        for (dex_name, dex) in &self.dexes {
+            info!("Fetching pools for DEX: {}", dex_name);
+
+            match dex.get_all_pools().await {
+                Ok(pools) => {
+                    info!("Found {} pools for {}", pools.len(), dex_name);
+                    for pool in pools {
+                        match self.process_pool(&pool).await {
+                            Ok(_) => debug!("Processed pool {} on {}", pool.address, pool.dex),
+                            Err(e) => warn!(
+                                "Failed to process pool {} on {}: {}",
+                                pool.address, pool.dex, e
+                            ),
                         }
                     }
-                    Err(e) => {
-                        warn!("Failed to get pools for {}: {}", dex_name, e);
-                    }
+                }
+                Err(e) => {
+                    warn!("Failed to fetch pools for {}: {}", dex_name, e);
                 }
             }
         }
+
+        Ok(())
     }
 
     /// Processes a liquidity pool by retrieving and storing its liquidity distribution.
@@ -298,6 +330,20 @@ pub async fn run_indexer(
             indexer.start(test_mode).await?;
         }
     }
+
+    Ok(())
+}
+
+pub async fn run_indexer_fetch(
+    config: Config,
+) -> Result<(), Error> {
+    // Initialize the database connection
+    let storage = Arc::new(SqliteStorage::new(&config.database.url)?);
+    let indexer = Indexer::new(config, storage)?;
+
+    info!("Indexer running in continuous fetch mode");
+    indexer.fetch().await?;
+    
 
     Ok(())
 }

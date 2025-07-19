@@ -231,7 +231,7 @@ impl Storage for SqliteStorage {
                 Err(e) => return Err(Error::DatabaseError(format!("query_row get_pool: {e}"))),
             };
 
-        // 3. Read token0, token1 info
+
         let mut token_stmt = conn
             .prepare(
                 "SELECT address, chain_id, name, symbol, decimals
@@ -266,7 +266,7 @@ impl Storage for SqliteStorage {
             })
             .map_err(|e| Error::DatabaseError(format!("query_row token1: {e}")))?;
 
-        // chrono::DateTime<Utc> default value (1970-01-01T00:00:00Z)
+
         let default_dt = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc);
 
         Ok(Some(Pool {
