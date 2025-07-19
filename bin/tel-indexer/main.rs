@@ -1,6 +1,8 @@
 use clap::Parser;
+
 use tel_core::{config, dexes::uniswap_v3};
 use tel_indexer::{run_indexer, run_indexer_fetch};
+
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
@@ -18,6 +20,7 @@ struct Args {
     /// Optional pool address to index
     #[arg(short, long)]
     pair: Option<String>,
+
 
     /// Fetch all blocks
     #[arg(long)]
@@ -43,11 +46,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = config::load_config(&args.config)?;
 
     // Run indexer
+
     if args.fetch_all {
         run_indexer_fetch(config).await?;
     } else {
         run_indexer(config, args.dex, args.pair).await?;
     }
 
+
     Ok(())
-} 
+}

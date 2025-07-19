@@ -84,7 +84,8 @@ impl Indexer {
             for (dex_name, dex) in &self.dexes {
                 info!("Processing DEX: {}", dex_name);
 
-                // UniswapV2의 경우 DB에 이미 pool이 있으면 get_all_pools를 건너뜀
+                // Only UniswapV2 skips on-chain fetch if DB already has pools.
+                // UniswapV3 and others: always fetch and process pools to keep distributions up to date.
                 if dex_name == "uniswap_v2" {
                     let pools_in_db = self.storage.get_pools_by_dex("uniswap_v2", dex.chain_id());
                     if let Ok(pools) = pools_in_db {
@@ -110,25 +111,54 @@ impl Indexer {
                 }
 
                 // Get pools for this DEX
-                match dex.get_all_pools().await {
-                    Ok(pools) => {
-                        info!("Found {} pools for {}", pools.len(), dex_name);
-
-                        // Process each pool
-                        for pool in pools {
-                            match self.process_pool(&pool).await {
-                                Ok(_) => {
-                                    debug!("Processed pool {} on {}", pool.address, pool.dex)
+                if dex_name == "uniswap_v3" {
+                    // Try to downcast to UniswapV3 and call get_all_pools_test
+                    if let Some(uniswap_v3) = dex
+                        .as_any()
+                        .downcast_ref::<crate::dexes::uniswap_v3::UniswapV3>()
+                    {
+                        match uniswap_v3.get_all_pools_test().await {
+                            Ok(pools) => {
+                                info!(
+                                    "[TEST] Found {} pools for {} (test mode)",
+                                    pools.len(),
+                                    dex_name
+                                );
+                                for pool in pools {
+                                    match self.process_pool(&pool).await {
+                                        Ok(_) => debug!(
+                                            "Processed pool {} on {}",
+                                            pool.address, pool.dex
+                                        ),
+                                        Err(e) => warn!(
+                                            "Failed to process pool {} on {}: {}",
+                                            pool.address, pool.dex, e
+                                        ),
+                                    }
                                 }
-                                Err(e) => warn!(
-                                    "Failed to process pool {} on {}: {}",
-                                    pool.address, pool.dex, e
-                                ),
+                            }
+                            Err(e) => warn!("[TEST] Failed to get pools for {}: {}", dex_name, e),
+                        }
+                    } else {
+                        warn!("[TEST] Could not downcast dex to UniswapV3 for test pool fetch");
+                    }
+                } else {
+                    match dex.get_all_pools().await {
+                        Ok(pools) => {
+                            info!("Found {} pools for {}", pools.len(), dex_name);
+                            for pool in pools {
+                                match self.process_pool(&pool).await {
+                                    Ok(_) => {
+                                        debug!("Processed pool {} on {}", pool.address, pool.dex)
+                                    }
+                                    Err(e) => warn!(
+                                        "Failed to process pool {} on {}: {}",
+                                        pool.address, pool.dex, e
+                                    ),
+                                }
                             }
                         }
-                    }
-                    Err(e) => {
-                        warn!("Failed to get pools for {}: {}", dex_name, e);
+                        Err(e) => warn!("Failed to get pools for {}: {}", dex_name, e),
                     }
                 }
             }

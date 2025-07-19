@@ -1,4 +1,4 @@
-import { LiquidityWallsResponse, LiquidityWallsQuery, Token } from '@/types/api';
+import { LiquidityWallsResponse, LiquidityWallsQuery, Token, Pool } from '@/types/api';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8081';
 
@@ -49,8 +49,12 @@ class ApiClient {
     return this.request<Token>(`/v1/tokens/${chainId}/${address}`);
   }
 
-  async getPoolsByDex(dex: string, chainId: number): Promise<string[]> {
-    return this.request<string[]>(`/v1/pools/${dex}/${chainId}`);
+  async getPoolsByDex(dex: string, chainId: number): Promise<Pool[]> {
+    return this.request<Pool[]>(`/v1/pools/${dex}/${chainId}`);
+  }
+
+  async getAllPools(chainId: number): Promise<Pool[]> {
+    return this.request<Pool[]>(`/v1/chains/${chainId}/pools`);
   }
 
   async healthCheck(): Promise<void> {

@@ -75,7 +75,7 @@ impl Indexer {
     ///
     /// # Returns
     /// Returns `Ok(())` if the loop is externally stopped; otherwise, runs indefinitely.
-    pub async fn start(&self) -> Result<(), Error> {
+    pub async fn start(&self, test_mode: bool) -> Result<(), Error> {
         info!("Starting indexer...");
         let interval = Duration::from_secs(self.config.indexer.interval_secs);
         let mut interval_timer = time::interval(interval);
@@ -156,16 +156,13 @@ impl Indexer {
     ///
     /// Returns an error if the DEX is unknown, if retrieving the liquidity distribution fails, or if saving to storage fails.
     async fn process_pool(&self, pool: &Pool) -> Result<(), Error> {
-        // Get DEX implementation
         let dex = self
             .dexes
             .get(&pool.dex)
             .ok_or_else(|| Error::UnknownDEX(pool.dex.clone()))?;
 
-        // Get and store liquidity distribution
         let distribution = dex.get_liquidity_distribution(pool.address).await?;
         storage::save_liquidity_distribution_async(self.storage.clone(), distribution).await?;
-
         Ok(())
     }
 
@@ -284,6 +281,7 @@ pub async fn run_indexer(
     config: Config,
     dex: Option<String>,
     pair: Option<String>,
+    test_mode: bool,
 ) -> Result<(), Error> {
     // Initialize the database connection
     let storage = Arc::new(SqliteStorage::new(&config.database.url)?);
@@ -292,24 +290,18 @@ pub async fn run_indexer(
     match (dex, pair) {
         (Some(dex_name), Some(pool_address)) => {
             info!("Indexer running in single pool mode");
-
-            // Validate DEX exists
             if !indexer.dexes.contains_key(&dex_name) {
                 return Err(Error::UnknownDEX(dex_name));
             }
-
-            // Find the chain ID for this DEX
             let chain_id = indexer
                 .dexes
                 .get(&dex_name)
                 .map(|dex| dex.chain_id())
-                .unwrap_or(1); // Default to Ethereum mainnet
-
+                .unwrap_or(1);
             let pool = indexer
                 .index_pool(&dex_name, &pool_address, chain_id)
                 .await?;
             info!("Indexed pool: {} on {}", pool.address, pool.dex);
-
             match indexer
                 .get_liquidity_distribution(&dex_name, &pool_address)
                 .await
@@ -335,7 +327,7 @@ pub async fn run_indexer(
         }
         _ => {
             info!("Indexer running in continuous mode");
-            indexer.start().await?;
+            indexer.start(test_mode).await?;
         }
     }
 

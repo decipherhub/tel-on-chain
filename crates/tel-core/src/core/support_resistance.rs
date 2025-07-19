@@ -21,7 +21,7 @@ pub fn identify_support_resistance(
         .sum();
 
     // Calculate price ranges
-    let prices: Vec<f64> = price_levels.iter().map(|pl| pl.price).collect();
+    let prices: Vec<f64> = price_levels.iter().map(|pl| pl.lower_price).collect();
     let min_price = prices.iter().fold(f64::INFINITY, |a, &b| a.min(b));
     let max_price = prices.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b));
     let price_range = max_price - min_price;
@@ -32,15 +32,15 @@ pub fn identify_support_resistance(
             continue;
         }
 
-        let prev_pl = &price_levels[i - 1];
-        let next_pl = &price_levels[i + 1];
+        let _prev_pl = &price_levels[i - 1];
+        let _next_pl = &price_levels[i + 1];
 
         // Calculate combined liquidity at this level
         let combined_liquidity = pl.token0_liquidity + pl.token1_liquidity;
 
         // Calculate strength based on relative liquidity concentration
         let strength = calculate_support_resistance_strength(
-            pl.price,
+            pl.lower_price,
             combined_liquidity,
             total_liquidity,
             price_range,
@@ -59,7 +59,7 @@ pub fn identify_support_resistance(
             };
 
             levels.push(SupportResistanceLevel {
-                price: pl.price,
+                price: pl.lower_price,
                 strength,
                 level_type,
                 token0: token0.clone(),
