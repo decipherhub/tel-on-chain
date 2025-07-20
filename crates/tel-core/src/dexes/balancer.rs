@@ -1,6 +1,7 @@
 use alloy_primitives::Address;
 use async_trait::async_trait;
 use std::sync::Arc;
+use crate::storage::Storage;
 
 use crate::{
     dexes::DexProtocol,
@@ -12,6 +13,7 @@ use crate::{
 pub struct Balancer {
     factory_address: Address,
     provider: Arc<EthereumProvider>,
+    storage: Arc<dyn Storage>,
 }
 
 impl Balancer {
@@ -19,6 +21,7 @@ impl Balancer {
         factory_address: Address,
         provider_manager: Arc<ProviderManager>,
         chain_id: u64,
+        storage: Arc<dyn Storage>,
     ) -> Result<Self> {
         let provider = provider_manager.by_chain_id(chain_id).ok_or_else(|| {
             Error::ProviderError(format!("No provider found for chain {}", chain_id))
@@ -27,6 +30,7 @@ impl Balancer {
         Ok(Self {
             factory_address,
             provider,
+            storage,
         })
     }
 
@@ -70,6 +74,10 @@ impl DexProtocol for Balancer {
 
     fn provider(&self) -> Arc<EthereumProvider> {
         self.provider.clone()
+    }
+
+    fn storage(&self) -> Arc<dyn Storage> {
+        self.storage.clone()
     }
 
     async fn get_pool(&self, _pool_address: Address) -> Result<Pool> {

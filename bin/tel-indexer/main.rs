@@ -1,6 +1,8 @@
 use clap::Parser;
-use tel_core::config;
-use tel_indexer::run_indexer;
+
+use tel_core::{config, dexes::uniswap_v3};
+use tel_indexer::{run_indexer, run_indexer_fetch};
+
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
@@ -19,9 +21,10 @@ struct Args {
     #[arg(short, long)]
     pair: Option<String>,
 
-    /// Run in test mode (use test pools for uniswap_v3)
+
+    /// Fetch all blocks
     #[arg(long)]
-    test_mode: bool,
+    fetch_all: bool,
 }
 
 #[tokio::main]
@@ -43,7 +46,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = config::load_config(&args.config)?;
 
     // Run indexer
-    run_indexer(config, args.dex, args.pair, args.test_mode).await?;
+
+    if args.fetch_all {
+        run_indexer_fetch(config).await?;
+    } else {
+        run_indexer(config, args.dex, args.pair, false).await?;
+    }
+
 
     Ok(())
 }

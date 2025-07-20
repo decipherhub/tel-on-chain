@@ -6,18 +6,21 @@ use alloy_primitives::Address;
 use async_trait::async_trait;
 use chrono::Utc;
 use std::sync::Arc;
+use crate::storage::Storage;
 
 // Sushiswap is a fork of Uniswap V2, so the implementation is very similar
 pub struct Sushiswap {
     provider: Arc<EthereumProvider>,
     factory_address: Address,
+    storage: Arc<dyn Storage>,
 }
 
 impl Sushiswap {
-    pub fn new(provider: Arc<EthereumProvider>, factory_address: Address) -> Self {
+    pub fn new(provider: Arc<EthereumProvider>, factory_address: Address, storage: Arc<dyn Storage>) -> Self {
         Self {
             provider,
             factory_address,
+            storage,
         }
     }
 }
@@ -38,6 +41,10 @@ impl DexProtocol for Sushiswap {
 
     fn provider(&self) -> Arc<EthereumProvider> {
         self.provider.clone()
+    }
+
+    fn storage(&self) -> Arc<dyn Storage> {
+        self.storage.clone()
     }
 
     /// Asynchronously retrieves information about a Sushiswap pool at the specified address.

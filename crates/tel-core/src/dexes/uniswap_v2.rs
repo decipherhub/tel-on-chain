@@ -180,6 +180,10 @@ impl DexProtocol for UniswapV2 {
         self.provider.clone()
     }
 
+    fn storage(&self) -> Arc<dyn Storage> {
+        self.storage.clone()
+    }
+
     /// Retrieves information about a specific Uniswap V2 pool by its address.
     ///
     /// Returns a `Pool` object with placeholder token data. In production, this would fetch real pool and token metadata from the blockchain.

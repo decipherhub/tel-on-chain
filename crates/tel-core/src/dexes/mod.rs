@@ -28,11 +28,20 @@ pub trait DexProtocol: Send + Sync {
     /// Get the provider for this DEX
     fn provider(&self) -> Arc<EthereumProvider>;
 
+    /// Get the storage for this DEX
+    fn storage(&self) -> Arc<dyn Storage>;
+
     /// Get pool details for a specific pool address
     async fn get_pool(&self, pool_address: Address) -> Result<Pool, Error>;
 
-    /// Get all pools
+    /// Get all pools from full node
     async fn get_all_pools(&self) -> Result<Vec<Pool>, Error>;
+
+    /// Get all pools from local database
+    async fn get_all_pools_local(&self) -> Result<Vec<Pool>, Error> {
+        let pools = self.storage().get_pools_by_dex(self.name(), self.chain_id())?;
+        Ok(pools)
+    }
 
     /// Get token details for a specific token address
     async fn get_token(&self, token_address: Address) -> Result<Token, Error> {
@@ -103,6 +112,7 @@ pub fn get_dex_by_name(
         "sushiswap" => Some(Box::new(sushiswap::Sushiswap::new(
             provider,
             factory_address,
+            storage.clone(),
         ))),
         // Others will be implemented later
         _ => None,

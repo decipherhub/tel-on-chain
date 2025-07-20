@@ -75,29 +75,35 @@ impl Indexer {
     ///
     /// # Returns
     /// Returns `Ok(())` if the loop is externally stopped; otherwise, runs indefinitely.
-    pub async fn start(&self, test_mode: bool) -> Result<(), Error> {
-        info!("Starting indexer...");
+    pub async fn start(&self) {
+        let light_mode: bool = true; // Only index first 10 pools for each dex. TODO: make it configurable
+        let light_mode_index_pool_count_per_dex = 10;
+
+        if light_mode {
+            info!("Starting indexer in light mode... light_mode_index_pool_count_per_dex: {}", light_mode_index_pool_count_per_dex);
+        } else {
+            info!("Starting indexer in full mode...");
+        }
         let interval = Duration::from_secs(self.config.indexer.interval_secs);
         let mut interval_timer = time::interval(interval);
-
+        
         loop {
             interval_timer.tick().await;
             info!("Indexer cycle running");
-
+            
             // Process each configured DEX
             for (dex_name, dex) in &self.dexes {
-                info!("Processing DEX: {}", dex_name);
+                info!("Indexing pool states from DEX: {}", dex_name);
 
                 // Get pools for this DEX
-                let pools_result = if test_mode && dex_name == "uniswap_v3" {
-                    dex.get_all_pools_test().await
-                } else {
-                    dex.get_all_pools().await
-                };
-
-                match pools_result {
+                match dex.get_all_pools_local().await {
                     Ok(pools) => {
                         info!("Found {} pools for {}", pools.len(), dex_name);
+                        let pools = if light_mode {
+                            pools.iter().take(light_mode_index_pool_count_per_dex).cloned().collect()
+                        } else {
+                            pools
+                        };
                         for pool in pools {
                             match self.process_pool(&pool).await {
                                 Ok(_) => debug!("Processed pool {} on {}", pool.address, pool.dex),
@@ -112,8 +118,39 @@ impl Indexer {
                         warn!("Failed to get pools for {}: {}", dex_name, e);
                     }
                 }
+
+                info!("Finished indexing pool states from DEX: {}", dex_name);
             }
         }
+    }
+
+    pub async fn fetch(&self) -> Result<(), Error> {
+        info!("Starting indexer fetch mode...");
+
+        // Fetch all pools from each DEX
+        for (dex_name, dex) in &self.dexes {
+            info!("Fetching pools for DEX: {}", dex_name);
+
+            match dex.get_all_pools().await {
+                Ok(pools) => {
+                    info!("Found {} pools for {}", pools.len(), dex_name);
+                    for pool in pools {
+                        match self.process_pool(&pool).await {
+                            Ok(_) => debug!("Processed pool {} on {}", pool.address, pool.dex),
+                            Err(e) => warn!(
+                                "Failed to process pool {} on {}: {}",
+                                pool.address, pool.dex, e
+                            ),
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to fetch pools for {}: {}", dex_name, e);
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Processes a liquidity pool by retrieving and storing its liquidity distribution.
@@ -295,9 +332,23 @@ pub async fn run_indexer(
         }
         _ => {
             info!("Indexer running in continuous mode");
-            indexer.start(test_mode).await?;
+            indexer.start().await;
         }
     }
+
+    Ok(())
+}
+
+pub async fn run_indexer_fetch(
+    config: Config,
+) -> Result<(), Error> {
+    // Initialize the database connection
+    let storage = Arc::new(SqliteStorage::new(&config.database.url)?);
+    let indexer = Indexer::new(config, storage)?;
+
+    info!("Indexer running in fetch mode");
+    indexer.fetch().await?;
+    
 
     Ok(())
 }
