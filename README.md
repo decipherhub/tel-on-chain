@@ -122,17 +122,22 @@ This will launch the graphical interface for visualizing buy/sell walls.
 
 ### Development
 
-For development, you can run both the API server and GUI application in separate terminals:
+You should run Indexer, API server and GUI application at the same time:
 
-```bash
-chmod +x scripts/run-all.sh
-./scripts/run-all.sh
+```
+chmod +x ./scripts/*
 ```
 
-For test mode, run:
+For fetch mode (saves pool addresses across DEXes to sqlite database), run:
 
 ```bash
-./scripts/run-all.sh test
+./scripts/run-fetch.sh
+```
+
+To run,
+
+```bash
+./scripts/run-all.sh
 ```
 
 ## API Documentation
