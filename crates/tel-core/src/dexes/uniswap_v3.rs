@@ -286,7 +286,10 @@ impl DexProtocol for UniswapV3 {
         self.provider.clone()
     }
 
-
+    fn storage(&self) -> Arc<dyn Storage> {
+        self.storage.clone()
+    }
+    
     async fn get_pool(&self, pool_address: Address) -> crate::Result<Pool> {
         let pool_result = get_pool_async(self.storage.clone(), pool_address).await;
         match pool_result {

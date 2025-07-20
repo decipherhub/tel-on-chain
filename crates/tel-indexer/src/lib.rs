@@ -75,48 +75,51 @@ impl Indexer {
     ///
     /// # Returns
     /// Returns `Ok(())` if the loop is externally stopped; otherwise, runs indefinitely.
-    pub async fn start(&self, test_mode: bool) -> Result<(), Error> {
-        info!("Starting indexer...");
+    pub async fn start(&self) {
+        let light_mode: bool = true; // Only index first 10 pools for each dex. TODO: make it configurable
+        let light_mode_index_pool_count_per_dex = 10;
+
+        if light_mode {
+            info!("Starting indexer in light mode... light_mode_index_pool_count_per_dex: {}", light_mode_index_pool_count_per_dex);
+        } else {
+            info!("Starting indexer in full mode...");
+        }
         let interval = Duration::from_secs(self.config.indexer.interval_secs);
         let mut interval_timer = time::interval(interval);
         
-        //TODO
-        // get_all_pools should take latest block as an argument 
-        // because we want to fetch all pools from the latest block in real time
-        // but now, we don't have latest block information to fetch real time pools
-        // for now, we get all pools from db, so I comment out all this logic in unfetch mode
-
-        // loop {
-        //     interval_timer.tick().await;
-        //     info!("Indexer cycle running");
+        loop {
+            interval_timer.tick().await;
+            info!("Indexer cycle running");
             
-        //     // Process each configured DEX
-        //     for (dex_name, dex) in &self.dexes {
-        //         info!("Processing DEX: {}", dex_name);
+            // Process each configured DEX
+            for (dex_name, dex) in &self.dexes {
+                info!("Processing DEX: {}", dex_name);
 
-        //         // Get pools for this DEX
-        //         match dex.get_all_pools().await {
-        //             Ok(pools) => {
-        //                 info!("Found {} pools for {}", pools.len(), dex_name);
-        //                 for pool in pools {
-        //                     match self.process_pool(&pool).await {
-        //                         Ok(_) => debug!("Processed pool {} on {}", pool.address, pool.dex),
-        //                         Err(e) => warn!(
-        //                             "Failed to process pool {} on {}: {}",
-        //                             pool.address, pool.dex, e
-        //                         ),
-        //                     }
-        //                 }
-        //             }
-        //             Err(e) => {
-        //                 warn!("Failed to get pools for {}: {}", dex_name, e);
-        //             }
-        //         }
-        //     }
-        // }
-
-        // Return a dummy Ok result for now
-        Ok(())
+                // Get pools for this DEX
+                match dex.get_all_pools_local().await {
+                    Ok(pools) => {
+                        info!("Found {} pools for {}", pools.len(), dex_name);
+                        let pools = if light_mode {
+                            pools.iter().take(light_mode_index_pool_count_per_dex).cloned().collect()
+                        } else {
+                            pools
+                        };
+                        for pool in pools {
+                            match self.process_pool(&pool).await {
+                                Ok(_) => debug!("Processed pool {} on {}", pool.address, pool.dex),
+                                Err(e) => warn!(
+                                    "Failed to process pool {} on {}: {}",
+                                    pool.address, pool.dex, e
+                                ),
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to get pools for {}: {}", dex_name, e);
+                    }
+                }
+            }
+        }
     }
 
     pub async fn fetch(&self) -> Result<(), Error> {
@@ -327,7 +330,7 @@ pub async fn run_indexer(
         }
         _ => {
             info!("Indexer running in continuous mode");
-            indexer.start(test_mode).await?;
+            indexer.start().await;
         }
     }
 
@@ -341,7 +344,7 @@ pub async fn run_indexer_fetch(
     let storage = Arc::new(SqliteStorage::new(&config.database.url)?);
     let indexer = Indexer::new(config, storage)?;
 
-    info!("Indexer running in continuous fetch mode");
+    info!("Indexer running in fetch mode");
     indexer.fetch().await?;
     
 

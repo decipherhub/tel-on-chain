@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.fetch_all {
         run_indexer_fetch(config).await?;
     } else {
-        run_indexer(config, args.dex, args.pair).await?;
+        run_indexer(config, args.dex, args.pair, false).await?;
     }
 
 
