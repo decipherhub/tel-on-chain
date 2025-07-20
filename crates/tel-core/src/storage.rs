@@ -37,6 +37,12 @@ pub trait Storage: Send + Sync {
         dex: &str,
         chain_id: u64,
     ) -> Result<Option<LiquidityDistribution>>;
+
+    fn get_pools_by_token0(
+    &self,
+    token0: Address,
+    chain_id: u64,
+) -> Result<Vec<Pool>>;
 }
 
 pub struct SqliteStorage {
@@ -745,6 +751,25 @@ impl Storage for SqliteStorage {
             ))),
         }
     }
+
+    // get_pools_by_token0 : only input token0 address & query all the pools that have token0 as token0_address
+    fn get_pools_by_token0(
+    storage: Arc<dyn Storage>,
+    token0: Address,
+    chain_id: u64,
+) -> Result<Vec<Pool>> {
+    let conn = self.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare(
+                "SELECT data FROM liquidity_distributions 
+             WHERE token0_address = ?1  AND dex = ?2 AND chain_id = ?3
+             ORDER BY timestamp DESC LIMIT 1",
+            )
+            .map_err(|e| {
+                Error::DatabaseError(format!("prepare get_liquidity_distribution: {e}"))
+            })?;
+    storage.get_pools_by_token(token0, Address::default(), chain_id)
+}   
 }
 
 pub async fn save_token_async(storage: Arc<dyn Storage>, token: Token) -> Result<()> {
@@ -790,6 +815,9 @@ pub async fn save_liquidity_distribution_async(
 ) -> Result<()> {
     storage.save_liquidity_distribution(&distribution)
 }
+
+
+
 
 // Meges multiple liquidity distributions for a specific token address into a single distribution.
 // Base token1 address is USDC. 
