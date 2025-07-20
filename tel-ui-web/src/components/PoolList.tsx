@@ -5,6 +5,7 @@ import { Pool } from '@/types/api';
 import { apiClient } from '@/lib/api';
 import { Loader2, Search, ExternalLink, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { Pagination } from '@/components/ui/Pagination';
 
 interface PoolListProps {
   onPoolSelect: (pool: Pool) => void;
@@ -19,6 +20,8 @@ export function PoolList({ onPoolSelect, selectedPool }: PoolListProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDex, setSelectedDex] = useState<string>('all');
   const [chainId] = useState(1); // Default to Ethereum mainnet
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 100;
 
   useEffect(() => {
     fetchPools();
@@ -26,6 +29,7 @@ export function PoolList({ onPoolSelect, selectedPool }: PoolListProps) {
 
   useEffect(() => {
     filterPools();
+    setCurrentPage(1); // Reset to first page when filters change
   }, [pools, searchTerm, selectedDex]);
 
   const fetchPools = async () => {
@@ -96,6 +100,18 @@ export function PoolList({ onPoolSelect, selectedPool }: PoolListProps) {
     return dexes.sort();
   };
 
+  const getPaginatedPools = () => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return filteredPools.slice(startIndex, endIndex);
+  };
+
+  const totalPages = Math.ceil(filteredPools.length / itemsPerPage);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
   if (loading) {
     return (
       <div className="bg-white rounded-lg shadow p-6">
@@ -128,6 +144,11 @@ export function PoolList({ onPoolSelect, selectedPool }: PoolListProps) {
           <h2 className="text-lg font-semibold text-gray-900">Available Pools</h2>
           <div className="text-sm text-gray-500">
             {filteredPools.length} of {pools.length} pools
+            {filteredPools.length > itemsPerPage && (
+              <span className="ml-2">
+                (showing {getPaginatedPools().length} on page {currentPage} of {totalPages})
+              </span>
+            )}
           </div>
         </div>
 
@@ -160,50 +181,63 @@ export function PoolList({ onPoolSelect, selectedPool }: PoolListProps) {
       </div>
 
       {/* Pool List */}
-      <div className="max-h-96 overflow-y-auto">
+      <div>
         {filteredPools.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
             No pools found matching your criteria
           </div>
         ) : (
-          <div className="divide-y divide-gray-200">
-            {filteredPools.map((pool) => (
-              <div
-                key={pool.address}
-                onClick={() => onPoolSelect(pool)}
-                className={`p-4 hover:bg-gray-50 cursor-pointer transition-colors ${
-                  selectedPool?.address === pool.address ? 'bg-blue-50 border-r-4 border-blue-500' : ''
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3">
-                      <div className="font-medium text-gray-900">
-                        {formatTokenPair(pool)}
+          <>
+            <div className="divide-y divide-gray-200">
+              {getPaginatedPools().map((pool) => (
+                <div
+                  key={pool.address}
+                  onClick={() => onPoolSelect(pool)}
+                  className={`p-4 hover:bg-gray-50 cursor-pointer transition-colors ${
+                    selectedPool?.address === pool.address ? 'bg-blue-50 border-r-4 border-blue-500' : ''
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-3">
+                        <div className="font-medium text-gray-900">
+                          {formatTokenPair(pool)}
+                        </div>
+                        <div className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
+                          {getDexDisplayName(pool.dex)}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {formatFee(pool.fee)}
+                        </div>
                       </div>
-                      <div className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
-                        {getDexDisplayName(pool.dex)}
+                      <div className="text-sm text-gray-500 mt-1">
+                        {formatAddress(pool.address)}
                       </div>
-                      <div className="text-sm text-gray-500">
-                        {formatFee(pool.fee)}
-                      </div>
+                      {pool.tokens.length >= 2 && (
+                        <div className="text-xs text-gray-400 mt-1">
+                          {pool.tokens[0].name} / {pool.tokens[1].name}
+                        </div>
+                      )}
                     </div>
-                    <div className="text-sm text-gray-500 mt-1">
-                      {formatAddress(pool.address)}
+                    <div className="flex items-center space-x-2">
+                      <ExternalLink className="h-4 w-4 text-gray-400" />
                     </div>
-                    {pool.tokens.length >= 2 && (
-                      <div className="text-xs text-gray-400 mt-1">
-                        {pool.tokens[0].name} / {pool.tokens[1].name}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <ExternalLink className="h-4 w-4 text-gray-400" />
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+            
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={handlePageChange}
+                totalItems={filteredPools.length}
+                itemsPerPage={itemsPerPage}
+              />
+            )}
+          </>
         )}
       </div>
     </div>
