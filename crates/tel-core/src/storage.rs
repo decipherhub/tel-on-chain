@@ -1,5 +1,6 @@
 use crate::error::Error;
 use crate::models::{LiquidityDistribution, Pool, Token};
+use crate::utils::{merge_synthetic_liquidity_distributions, merge_two_liquidity_distributions};
 use crate::Result;
 use alloy_primitives::Address;
 use chrono::{DateTime, NaiveDateTime, Utc};
@@ -789,3 +790,60 @@ pub async fn save_liquidity_distribution_async(
 ) -> Result<()> {
     storage.save_liquidity_distribution(&distribution)
 }
+
+// Meges multiple liquidity distributions for a specific token address into a single distribution.
+// Base token1 address is USDC. 
+// OUTPUT : (token, USDC) pair liqudity distribution
+
+pub async fn merge_liquidity_distribution_async(
+    storage: Arc<dyn Storage>,
+    token_address: Address,
+    distributions: &[LiquidityDistribution],
+) -> Result<Option<LiquidityDistribution>> {
+
+    let USDC_addr = Address::from_str("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48").unwrap();
+    let token0 = storage.get_token(token_address, 1).unwrap().unwrap_or_else(|| Token {
+        address: token_address,
+        chain_id: 1,
+        name: "Unknown Token".to_string(),
+        symbol: "UNKNOWN".to_string(),
+        decimals: 18,
+    });
+    if token0.name == "Unknown Token" {
+        return Ok(None); // If token is unknown, return None
+    }
+    let mut merged_distribution = 
+        storage.get_liquidity_distribution(token_address, USDC_addr, "uniswap_v3", 1).unwrap().unwrap();
+
+    
+    for distribution in distributions {
+        let mut distribution = distribution.clone();
+        if distribution.token0.address != token_address {
+            continue;
+    }
+        // check if token1 is USDC
+        if distribution.token1.address == USDC_addr {
+            if distribution.dex != "uniswap_v3" {
+                continue; // Only merge distributions from Uniswap V3
+            }
+            merged_distribution = merge_two_liquidity_distributions(&merged_distribution, &distribution)
+                .ok_or(Error::DatabaseError("Failed to merge distributions".to_string()))?;
+        } else {
+            // (token1, USDC) pair 
+            let USDC_distribution = storage
+                .get_liquidity_distribution(distribution.token1.address, USDC_addr, &distribution.dex, 1)
+                .unwrap()
+                .unwrap();
+            // (token0, token1) pair + (token1, USDC) pair
+            distribution = merge_synthetic_liquidity_distributions(&distribution, &USDC_distribution)
+                .ok_or(Error::DatabaseError("Failed to merge synthetic distributions".to_string()))?;
+            // aggregated (token0, USDC) pair + synthetic (token0, USDC) pair
+            merged_distribution = merge_two_liquidity_distributions(&merged_distribution, &distribution)
+                .ok_or(Error::DatabaseError("Failed to merge distributions".to_string()))?;
+        }
+
+    }
+
+    Ok(Some(merged_distribution)) // Placeholder return, actual merging logic to be implemented
+}
+
