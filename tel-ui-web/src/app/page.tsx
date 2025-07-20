@@ -61,7 +61,7 @@ export default function HomePage() {
               {/* View Toggle */}
               <div className="flex items-center space-x-2">
                 <Button
-                  variant={currentView === 'pools' ? 'default' : 'outline'}
+                  variant={currentView === 'pools' ? 'primary' : 'outline'}
                   size="sm"
                   onClick={() => setCurrentView('pools')}
                 >
@@ -69,7 +69,7 @@ export default function HomePage() {
                   Pools
                 </Button>
                 <Button
-                  variant={currentView === 'analysis' ? 'default' : 'outline'}
+                  variant={currentView === 'analysis' ? 'primary' : 'outline'}
                   size="sm"
                   onClick={() => setCurrentView('analysis')}
                   disabled={!tokens}
@@ -115,7 +115,7 @@ export default function HomePage() {
             
             <PoolList 
               onPoolSelect={handlePoolSelect}
-              selectedPool={selectedPool}
+              selectedPool={selectedPool || undefined}
             />
           </div>
         )}

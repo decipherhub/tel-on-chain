@@ -335,8 +335,7 @@ pub async fn run_server(config: Config) -> Result<(), Error> {
         ]);
     let app = routes(state).layer(cors);
 
-    // Use port 8081 instead of the configured port
-    let addr = format!("{}:{}", config.api.host, 8081)
+    let addr = format!("{}:{}", config.api.host, config.api.port)
         .parse::<SocketAddr>()
         .map_err(|e| Error::Unknown(format!("Failed to parse socket address: {}", e)))?;
 

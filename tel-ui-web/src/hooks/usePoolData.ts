@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Pool } from '@/types/api';
 import { apiClient } from '@/lib/api';
 
@@ -26,7 +26,7 @@ export function usePoolData({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchPools = async () => {
+  const fetchPools = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -41,7 +41,7 @@ export function usePoolData({
     } finally {
       setLoading(false);
     }
-  };
+  }, [chainId, dex]);
 
   const refresh = () => {
     fetchPools();
@@ -49,14 +49,14 @@ export function usePoolData({
 
   useEffect(() => {
     fetchPools();
-  }, [chainId, dex]);
+  }, [chainId, dex, fetchPools]);
 
   useEffect(() => {
     if (!autoRefresh) return;
 
     const interval = setInterval(fetchPools, 30000); // Refresh every 30 seconds
     return () => clearInterval(interval);
-  }, [autoRefresh, chainId, dex]);
+  }, [autoRefresh, chainId, dex, fetchPools]);
 
   return {
     pools,
