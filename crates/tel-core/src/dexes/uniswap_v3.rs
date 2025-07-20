@@ -15,6 +15,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use std::str::FromStr;
 use std::sync::Arc;
+use tracing::info;
 
 sol! {
     // ── Uniswap V3 Factory ───────────────────────────────────────────
