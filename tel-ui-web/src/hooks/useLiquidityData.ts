@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import useSWR from 'swr';
 import { apiClient } from '@/lib/api';
-import { LiquidityWallsResponse, LiquidityWallsQuery } from '@/types/api';
+import { LiquidityWallsQuery } from '@/types/api';
 
 export function useLiquidityData(
   token0Address: string | null,

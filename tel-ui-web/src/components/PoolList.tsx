@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Pool } from '@/types/api';
 import { apiClient } from '@/lib/api';
 import { Loader2, Search, ExternalLink, Filter } from 'lucide-react';
@@ -23,16 +23,7 @@ export function PoolList({ onPoolSelect, selectedPool }: PoolListProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 100;
 
-  useEffect(() => {
-    fetchPools();
-  }, [chainId]);
-
-  useEffect(() => {
-    filterPools();
-    setCurrentPage(1); // Reset to first page when filters change
-  }, [pools, searchTerm, selectedDex]);
-
-  const fetchPools = async () => {
+  const fetchPools = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -43,9 +34,9 @@ export function PoolList({ onPoolSelect, selectedPool }: PoolListProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [chainId]);
 
-  const filterPools = () => {
+  const filterPools = useCallback(() => {
     let filtered = pools;
 
     // Filter by search term
@@ -65,7 +56,16 @@ export function PoolList({ onPoolSelect, selectedPool }: PoolListProps) {
     }
 
     setFilteredPools(filtered);
-  };
+  }, [pools, searchTerm, selectedDex]);
+
+  useEffect(() => {
+    fetchPools();
+  }, [chainId, fetchPools]);
+
+  useEffect(() => {
+    filterPools();
+    setCurrentPage(1); // Reset to first page when filters change
+  }, [pools, searchTerm, selectedDex, filterPools]);
 
   const formatTokenPair = (pool: Pool) => {
     if (pool.tokens.length >= 2) {

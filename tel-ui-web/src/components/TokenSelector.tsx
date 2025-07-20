@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { SUPPORTED_CHAINS, SUPPORTED_DEXES, POPULAR_TOKENS } from '@/lib/constants';
-import { isValidAddress, shortenAddress } from '@/lib/utils';
+import { isValidAddress } from '@/lib/utils';
 import { ChevronDown, Search } from 'lucide-react';
 
 interface TokenSelectorProps {

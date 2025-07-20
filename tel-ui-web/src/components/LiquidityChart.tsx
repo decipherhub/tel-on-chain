@@ -30,7 +30,15 @@ interface LiquidityChartProps {
   token1Symbol: string;
 }
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+interface TooltipProps {
+  active?: boolean;
+  payload?: Array<{
+    payload: ChartDataPoint;
+  }>;
+  label?: string;
+}
+
+const CustomTooltip = ({ active, payload, label }: TooltipProps) => {
   if (!active || !payload || !payload.length) return null;
 
   const data = payload[0].payload;
