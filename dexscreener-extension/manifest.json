@@ -1,0 +1,26 @@
+{
+    "manifest_version": 3,
+    "name": "Tel On-Chain Liquidity Overlay",
+    "description": "Overlays liquidity walls from Tel On-Chain API onto Dexscreener charts.",
+    "version": "0.1.0",
+    "permissions": [
+        "storage",
+        "activeTab",
+        "scripting"
+    ],
+    "host_permissions": [
+        "https://dexscreener.com/*",
+        "http://localhost:8080/*"
+    ],
+    "content_scripts": [
+        {
+            "matches": [
+                "https://dexscreener.com/*"
+            ],
+            "js": [
+                "contentScript.js"
+            ],
+            "run_at": "document_idle"
+        }
+    ]
+}
