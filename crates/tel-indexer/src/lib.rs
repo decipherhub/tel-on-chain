@@ -80,6 +80,19 @@ impl Indexer {
         let interval = Duration::from_secs(self.config.indexer.interval_secs);
         let mut interval_timer = time::interval(interval);
 
+ 
+        let pools_in_db = self.storage.get_pools_by_dex("uniswap_v3", 1);
+        if let Ok(pools) = pools_in_db {
+            for pool in pools {
+                match self.process_pool(&pool).await {
+                    Ok(_) => info!("Processed pool {} on {}", pool.address, pool.dex),
+                    Err(e) => warn!("Failed to process pool {} on {}: {}", pool.address, pool.dex, e),
+                }
+            }
+        }
+        return Ok(());
+
+
         loop {
             interval_timer.tick().await;
             info!("Indexer cycle running");
