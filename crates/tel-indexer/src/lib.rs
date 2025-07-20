@@ -93,7 +93,7 @@ impl Indexer {
             
             // Process each configured DEX
             for (dex_name, dex) in &self.dexes {
-                info!("Processing DEX: {}", dex_name);
+                info!("Indexing pool states from DEX: {}", dex_name);
 
                 // Get pools for this DEX
                 match dex.get_all_pools_local().await {
@@ -118,6 +118,8 @@ impl Indexer {
                         warn!("Failed to get pools for {}: {}", dex_name, e);
                     }
                 }
+
+                info!("Finished indexing pool states from DEX: {}", dex_name);
             }
         }
     }
