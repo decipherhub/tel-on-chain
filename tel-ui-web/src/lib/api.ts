@@ -1,4 +1,4 @@
-import { LiquidityWallsResponse, LiquidityWallsQuery, Token, Pool } from '@/types/api';
+import { LiquidityWallsResponse, LiquidityWallsQuery, Token, Pool, PaginationParams } from '@/types/api';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8081';
 
@@ -49,12 +49,22 @@ class ApiClient {
     return this.request<Token>(`/v1/tokens/${chainId}/${address}`);
   }
 
-  async getPoolsByDex(dex: string, chainId: number): Promise<Pool[]> {
-    return this.request<Pool[]>(`/v1/pools/${dex}/${chainId}`);
+  async getPoolsByDex(dex: string, chainId: number, pagination?: PaginationParams): Promise<Pool[]> {
+    const searchParams = new URLSearchParams();
+    if (pagination?.page) searchParams.append('page', pagination.page.toString());
+    if (pagination?.limit) searchParams.append('limit', pagination.limit.toString());
+
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return this.request<Pool[]>(`/v1/pools/${dex}/${chainId}${query}`);
   }
 
-  async getAllPools(chainId: number): Promise<Pool[]> {
-    return this.request<Pool[]>(`/v1/chains/${chainId}/pools`);
+  async getAllPools(chainId: number, pagination?: PaginationParams): Promise<Pool[]> {
+    const searchParams = new URLSearchParams();
+    if (pagination?.page) searchParams.append('page', pagination.page.toString());
+    if (pagination?.limit) searchParams.append('limit', pagination.limit.toString());
+
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return this.request<Pool[]>(`/v1/chains/${chainId}/pools${query}`);
   }
 
   async healthCheck(): Promise<void> {

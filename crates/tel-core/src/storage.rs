@@ -18,6 +18,8 @@ pub trait Storage: Send + Sync {
     fn save_pool(&self, pool: &Pool) -> Result<()>;
     fn get_pool(&self, address: Address) -> Result<Option<Pool>>;
     fn get_pools_by_dex(&self, dex: &str, chain_id: u64) -> Result<Vec<Pool>>;
+    fn get_pools_by_dex_paginated(&self, dex: &str, chain_id: u64, limit: u64, offset: u64) -> Result<Vec<Pool>>;
+    fn get_all_pools_paginated(&self, chain_id: u64, limit: u64, offset: u64) -> Result<Vec<Pool>>;
     fn get_pools_by_token(
         &self,
         token0: Address,
@@ -308,6 +310,190 @@ impl Storage for SqliteStorage {
         while let Some(row) = rows
             .next()
             .map_err(|e| Error::DatabaseError(format!("row get_pools_by_dex: {e}")))?
+        {
+            let address: String = row.get(0)?;
+            let chain_id: u64 = row.get(1)?;
+            let dex: String = row.get(2)?;
+            let token0_addr: String = row.get(3)?;
+            let token1_addr: String = row.get(4)?;
+            let fee: u32 = row.get(5)?;
+            
+            // Parse addresses
+            let address = Address::from_str(&address)
+                .map_err(|e| Error::DatabaseError(format!("parse pool address: {e}")))?;
+            let token0_address = Address::from_str(&token0_addr)
+                .map_err(|e| Error::DatabaseError(format!("parse token0 address: {e}")))?;
+            let token1_address = Address::from_str(&token1_addr)
+                .map_err(|e| Error::DatabaseError(format!("parse token1 address: {e}")))?;
+            
+            // Get token data from JOIN results
+            let token0_symbol: Option<String> = row.get(6)?;
+            let token0_name: Option<String> = row.get(7)?;
+            let token0_decimals: Option<u8> = row.get(8)?;
+            let token1_symbol: Option<String> = row.get(9)?;
+            let token1_name: Option<String> = row.get(10)?;
+            let token1_decimals: Option<u8> = row.get(11)?;
+            
+            // Skip pools where token info is missing
+            if token0_symbol.is_none() || token1_symbol.is_none() {
+                continue;
+            }
+            
+            let token0 = Token {
+                address: token0_address,
+                symbol: token0_symbol.unwrap(),
+                name: token0_name.unwrap(),
+                decimals: token0_decimals.unwrap(),
+                chain_id,
+            };
+            
+            let token1 = Token {
+                address: token1_address,
+                symbol: token1_symbol.unwrap(),
+                name: token1_name.unwrap(),
+                decimals: token1_decimals.unwrap(),
+                chain_id,
+            };
+            
+            // Create default timestamps (same as get_pool)
+            let default_dt = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc);
+            
+            let pool = Pool {
+                address,
+                dex,
+                chain_id,
+                tokens: vec![token0, token1],
+                creation_block: 0,
+                creation_timestamp: default_dt,
+                last_updated_block: 0,
+                last_updated_timestamp: default_dt,
+                fee: fee.into(),
+            };
+            
+            pools.push(pool);
+        }
+        
+        Ok(pools)
+    }
+
+    fn get_pools_by_dex_paginated(&self, dex: &str, chain_id: u64, limit: u64, offset: u64) -> Result<Vec<Pool>> {
+        let conn = self.conn.lock().unwrap();
+        
+        // Use a single query with JOINs to get all required data with pagination
+        let mut stmt = conn
+            .prepare("SELECT p.address, p.chain_id, p.dex, p.token0_address, p.token1_address, p.fee,
+                            t0.symbol as token0_symbol, t0.name as token0_name, t0.decimals as token0_decimals,
+                            t1.symbol as token1_symbol, t1.name as token1_name, t1.decimals as token1_decimals
+                     FROM pools p
+                     LEFT JOIN tokens t0 ON p.token0_address = t0.address AND p.chain_id = t0.chain_id
+                     LEFT JOIN tokens t1 ON p.token1_address = t1.address AND p.chain_id = t1.chain_id
+                     WHERE p.dex = ?1 AND p.chain_id = ?2
+                     ORDER BY p.rowid
+                     LIMIT ?3 OFFSET ?4")
+            .map_err(|e| Error::DatabaseError(format!("prepare get_pools_by_dex_paginated: {e}")))?;
+        
+        let mut rows = stmt
+            .query(params![dex, chain_id, limit, offset])
+            .map_err(|e| Error::DatabaseError(format!("query get_pools_by_dex_paginated: {e}")))?;
+        
+        let mut pools = Vec::new();
+        
+        while let Some(row) = rows
+            .next()
+            .map_err(|e| Error::DatabaseError(format!("row get_pools_by_dex_paginated: {e}")))?
+        {
+            let address: String = row.get(0)?;
+            let chain_id: u64 = row.get(1)?;
+            let dex: String = row.get(2)?;
+            let token0_addr: String = row.get(3)?;
+            let token1_addr: String = row.get(4)?;
+            let fee: u32 = row.get(5)?;
+            
+            // Parse addresses
+            let address = Address::from_str(&address)
+                .map_err(|e| Error::DatabaseError(format!("parse pool address: {e}")))?;
+            let token0_address = Address::from_str(&token0_addr)
+                .map_err(|e| Error::DatabaseError(format!("parse token0 address: {e}")))?;
+            let token1_address = Address::from_str(&token1_addr)
+                .map_err(|e| Error::DatabaseError(format!("parse token1 address: {e}")))?;
+            
+            // Get token data from JOIN results
+            let token0_symbol: Option<String> = row.get(6)?;
+            let token0_name: Option<String> = row.get(7)?;
+            let token0_decimals: Option<u8> = row.get(8)?;
+            let token1_symbol: Option<String> = row.get(9)?;
+            let token1_name: Option<String> = row.get(10)?;
+            let token1_decimals: Option<u8> = row.get(11)?;
+            
+            // Skip pools where token info is missing
+            if token0_symbol.is_none() || token1_symbol.is_none() {
+                continue;
+            }
+            
+            let token0 = Token {
+                address: token0_address,
+                symbol: token0_symbol.unwrap(),
+                name: token0_name.unwrap(),
+                decimals: token0_decimals.unwrap(),
+                chain_id,
+            };
+            
+            let token1 = Token {
+                address: token1_address,
+                symbol: token1_symbol.unwrap(),
+                name: token1_name.unwrap(),
+                decimals: token1_decimals.unwrap(),
+                chain_id,
+            };
+            
+            // Create default timestamps (same as get_pool)
+            let default_dt = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc);
+            
+            let pool = Pool {
+                address,
+                dex,
+                chain_id,
+                tokens: vec![token0, token1],
+                creation_block: 0,
+                creation_timestamp: default_dt,
+                last_updated_block: 0,
+                last_updated_timestamp: default_dt,
+                fee: fee.into(),
+            };
+            
+            pools.push(pool);
+        }
+        
+        Ok(pools)
+    }
+
+    fn get_all_pools_paginated(&self, chain_id: u64, limit: u64, offset: u64) -> Result<Vec<Pool>> {
+        let conn = self.conn.lock().unwrap();
+        
+        // Get pools from all supported DEXes with pagination
+        let dexes = ["uniswap_v3", "uniswap_v2", "sushiswap"];
+        
+        let mut stmt = conn
+            .prepare("SELECT p.address, p.chain_id, p.dex, p.token0_address, p.token1_address, p.fee,
+                            t0.symbol as token0_symbol, t0.name as token0_name, t0.decimals as token0_decimals,
+                            t1.symbol as token1_symbol, t1.name as token1_name, t1.decimals as token1_decimals
+                     FROM pools p
+                     LEFT JOIN tokens t0 ON p.token0_address = t0.address AND p.chain_id = t0.chain_id
+                     LEFT JOIN tokens t1 ON p.token1_address = t1.address AND p.chain_id = t1.chain_id
+                     WHERE p.chain_id = ?1 AND p.dex IN ('uniswap_v3', 'uniswap_v2', 'sushiswap')
+                     ORDER BY p.rowid DESC
+                     LIMIT ?2 OFFSET ?3")
+            .map_err(|e| Error::DatabaseError(format!("prepare get_all_pools_paginated: {e}")))?;
+        
+        let mut rows = stmt
+            .query(params![chain_id, limit, offset])
+            .map_err(|e| Error::DatabaseError(format!("query get_all_pools_paginated: {e}")))?;
+        
+        let mut pools = Vec::new();
+        
+        while let Some(row) = rows
+            .next()
+            .map_err(|e| Error::DatabaseError(format!("row get_all_pools_paginated: {e}")))?
         {
             let address: String = row.get(0)?;
             let chain_id: u64 = row.get(1)?;

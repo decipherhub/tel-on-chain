@@ -61,6 +61,16 @@ pub struct LiquidityWallsQuery {
     chain_id: Option<u64>,
 }
 
+/// Query parameters for pagination
+#[derive(Debug, Deserialize)]
+pub struct PaginationQuery {
+    page: Option<u64>,
+    limit: Option<u64>,
+}
+
+const DEFAULT_PAGE_SIZE: u64 = 100;
+const MAX_PAGE_SIZE: u64 = 1000;
+
 /// Application state shared across all routes
 pub struct AppState {
     storage: Arc<dyn Storage>,
@@ -266,14 +276,15 @@ async fn get_token_info(
 /// Get pools by DEX and chain ID
 async fn get_pools_by_dex(
     Path((dex, chain_id)): Path<(String, u64)>,
+    Query(pagination): Query<PaginationQuery>,
     State(state): State<Arc<AppState>>,
-) -> Result<Json<Vec<String>>, ApiError> {
-    match state.storage.get_pools_by_dex(&dex, chain_id) {
-        Ok(pools) => {
-            let pool_addresses: Vec<String> =
-                pools.iter().map(|pool| pool.address.to_string()).collect();
-            Ok(Json(pool_addresses))
-        }
+) -> Result<Json<Vec<Pool>>, ApiError> {
+    let limit = pagination.limit.unwrap_or(DEFAULT_PAGE_SIZE).min(MAX_PAGE_SIZE);
+    let page = pagination.page.unwrap_or(1);
+    let offset = (page.saturating_sub(1)) * limit;
+    
+    match state.storage.get_pools_by_dex_paginated(&dex, chain_id, limit, offset) {
+        Ok(pools) => Ok(Json(pools)),
         Err(e) => {
             warn!("Error getting pools by DEX: {}", e);
             // Return empty list instead of error for better UX
@@ -285,27 +296,21 @@ async fn get_pools_by_dex(
 /// Get all pools for a chain ID
 async fn get_all_pools(
     Path(chain_id): Path<u64>,
+    Query(pagination): Query<PaginationQuery>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<Pool>>, ApiError> {
-    // Get pools from all supported DEXes
-    let dexes = vec!["uniswap_v3", "uniswap_v2", "sushiswap"];
-    let mut all_pools = Vec::new();
+    let limit = pagination.limit.unwrap_or(DEFAULT_PAGE_SIZE).min(MAX_PAGE_SIZE);
+    let page = pagination.page.unwrap_or(1);
+    let offset = (page.saturating_sub(1)) * limit;
     
-    for dex in dexes {
-        match state.storage.get_pools_by_dex(dex, chain_id) {
-            Ok(pools) => {
-                all_pools.extend(pools);
-            }
-            Err(e) => {
-                warn!("Error getting pools for DEX {}: {}", dex, e);
-            }
+    match state.storage.get_all_pools_paginated(chain_id, limit, offset) {
+        Ok(pools) => Ok(Json(pools)),
+        Err(e) => {
+            warn!("Error getting all pools: {}", e);
+            // Return empty list instead of error for better UX
+            Ok(Json(Vec::new()))
         }
     }
-    
-    // Sort pools by creation timestamp (newest first)
-    all_pools.sort_by(|a, b| b.creation_timestamp.cmp(&a.creation_timestamp));
-    
-    Ok(Json(all_pools))
 }
 
 /// Run the API server
