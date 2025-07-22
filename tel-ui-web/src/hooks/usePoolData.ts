@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Pool, PaginationParams } from '@/types/api';
+import { Pool } from '@/types/api';
 import { apiClient } from '@/lib/api';
 
 interface UsePoolDataParams {
