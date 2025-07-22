@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Pool } from '@/types/api';
-import { apiClient } from '@/lib/api';
+import { usePoolData } from '@/hooks/usePoolData';
 import { Loader2, Search, ExternalLink, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Pagination } from '@/components/ui/Pagination';
@@ -13,61 +13,45 @@ interface PoolListProps {
 }
 
 export function PoolList({ onPoolSelect, selectedPool }: PoolListProps) {
-  const [pools, setPools] = useState<Pool[]>([]);
-  const [filteredPools, setFilteredPools] = useState<Pool[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDex, setSelectedDex] = useState<string>('all');
   const [chainId] = useState(1); // Default to Ethereum mainnet
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 100;
 
-  const fetchPools = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const fetchedPools = await apiClient.getAllPools(chainId);
-      setPools(fetchedPools);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch pools');
-    } finally {
-      setLoading(false);
-    }
-  }, [chainId]);
+  // Use server-side pagination
+  const { 
+    pools, 
+    loading, 
+    error, 
+    refresh 
+  } = usePoolData({ 
+    chainId, 
+    dex: selectedDex === 'all' ? undefined : selectedDex,
+    page: currentPage,
+    limit: itemsPerPage
+  });
 
-  const filterPools = useCallback(() => {
-    let filtered = pools;
-
-    // Filter by search term
-    if (searchTerm) {
-      filtered = filtered.filter(pool => 
-        pool.tokens.some(token => 
+  // Filter pools client-side for search functionality
+  const filteredPools = searchTerm 
+    ? pools.filter(pool => 
+        (pool.tokens && pool.tokens.some(token => 
           token.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
           token.name.toLowerCase().includes(searchTerm.toLowerCase())
-        ) || 
+        )) || 
         pool.address.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-
-    // Filter by DEX
-    if (selectedDex !== 'all') {
-      filtered = filtered.filter(pool => pool.dex === selectedDex);
-    }
-
-    setFilteredPools(filtered);
-  }, [pools, searchTerm, selectedDex]);
+      )
+    : pools;
 
   useEffect(() => {
-    fetchPools();
-  }, [chainId, fetchPools]);
-
-  useEffect(() => {
-    filterPools();
-    setCurrentPage(1); // Reset to first page when filters change
-  }, [pools, searchTerm, selectedDex, filterPools]);
+    // Reset to first page when DEX filter changes
+    setCurrentPage(1);
+  }, [selectedDex]);
 
   const formatTokenPair = (pool: Pool) => {
+    if (!pool.tokens || pool.tokens.length === 0) {
+      return 'Unknown';
+    }
     if (pool.tokens.length >= 2) {
       return `${pool.tokens[0].symbol}/${pool.tokens[1].symbol}`;
     }
@@ -95,21 +79,12 @@ export function PoolList({ onPoolSelect, selectedPool }: PoolListProps) {
     }
   };
 
-  const getUniqueDeXes = () => {
-    const dexes = [...new Set(pools.map(pool => pool.dex))];
-    return dexes.sort();
-  };
-
-  const getPaginatedPools = () => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    return filteredPools.slice(startIndex, endIndex);
-  };
-
-  const totalPages = Math.ceil(filteredPools.length / itemsPerPage);
-
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
+  };
+
+  const handleDexChange = (dex: string) => {
+    setSelectedDex(dex);
   };
 
   if (loading) {
@@ -129,7 +104,7 @@ export function PoolList({ onPoolSelect, selectedPool }: PoolListProps) {
         <div className="text-center py-8">
           <div className="text-red-600 mb-4">Error loading pools</div>
           <div className="text-gray-600 mb-4">{error}</div>
-          <Button onClick={fetchPools} variant="outline" size="sm">
+          <Button onClick={refresh} variant="outline" size="sm">
             Try Again
           </Button>
         </div>
@@ -143,11 +118,9 @@ export function PoolList({ onPoolSelect, selectedPool }: PoolListProps) {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-900">Available Pools</h2>
           <div className="text-sm text-gray-500">
-            {filteredPools.length} of {pools.length} pools
-            {filteredPools.length > itemsPerPage && (
-              <span className="ml-2">
-                (showing {getPaginatedPools().length} on page {currentPage} of {totalPages})
-              </span>
+            {filteredPools.length} pools
+            {searchTerm && filteredPools.length !== pools.length && (
+              <span className="ml-2">(filtered from {pools.length})</span>
             )}
           </div>
         </div>
@@ -168,13 +141,13 @@ export function PoolList({ onPoolSelect, selectedPool }: PoolListProps) {
             <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
             <select
               value={selectedDex}
-              onChange={(e) => setSelectedDex(e.target.value)}
+              onChange={(e) => handleDexChange(e.target.value)}
               className="pl-10 pr-8 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
             >
               <option value="all">All DEXes</option>
-              {getUniqueDeXes().map(dex => (
-                <option key={dex} value={dex}>{getDexDisplayName(dex)}</option>
-              ))}
+              <option value="uniswap_v2">Uniswap V2</option>
+              <option value="uniswap_v3">Uniswap V3</option>
+              <option value="sushiswap">SushiSwap</option>
             </select>
           </div>
         </div>
@@ -189,7 +162,7 @@ export function PoolList({ onPoolSelect, selectedPool }: PoolListProps) {
         ) : (
           <>
             <div className="divide-y divide-gray-200">
-              {getPaginatedPools().map((pool) => (
+              {filteredPools.map((pool) => (
                 <div
                   key={pool.address}
                   onClick={() => onPoolSelect(pool)}
@@ -213,7 +186,7 @@ export function PoolList({ onPoolSelect, selectedPool }: PoolListProps) {
                       <div className="text-sm text-gray-500 mt-1">
                         {formatAddress(pool.address)}
                       </div>
-                      {pool.tokens.length >= 2 && (
+                      {pool.tokens && pool.tokens.length >= 2 && (
                         <div className="text-xs text-gray-400 mt-1">
                           {pool.tokens[0].name} / {pool.tokens[1].name}
                         </div>
@@ -227,13 +200,13 @@ export function PoolList({ onPoolSelect, selectedPool }: PoolListProps) {
               ))}
             </div>
             
-            {/* Pagination */}
-            {totalPages > 1 && (
+            {/* Pagination - show if we have exactly itemsPerPage pools (indicating there might be more) */}
+            {pools.length === itemsPerPage && (
               <Pagination
                 currentPage={currentPage}
-                totalPages={totalPages}
+                totalPages={Math.max(1, currentPage + (pools.length === itemsPerPage ? 1 : 0))}
                 onPageChange={handlePageChange}
-                totalItems={filteredPools.length}
+                totalItems={pools.length}
                 itemsPerPage={itemsPerPage}
               />
             )}
