@@ -182,6 +182,9 @@ export default function HomePage() {
                         <p className="text-sm text-gray-500">
                           {selectedPool.dex.replace('_', ' ').toUpperCase()} • Fee: {(selectedPool.fee / 10000).toFixed(2)}%
                         </p>
+                        <p className="text-xs text-gray-400 mt-1 font-mono">
+                          Pool: {selectedPool.address}
+                        </p>
                       </div>
                       <Button
                         onClick={() => setCurrentView('pools')}
