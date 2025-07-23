@@ -467,6 +467,11 @@ impl DexProtocol for UniswapV3 {
             .await
             .map_err(|e| Error::ProviderError(format!("slot0: {e}")))?;
         let sqrt_price_x96: u128 = slot0.sqrtPriceX96.to(); // uint160 → u128
+        let liquidity = pool_contract
+            .liquidity()
+            .call()
+            .await
+            .map_err(|e| Error::ProviderError(format!("liquidity: {e}")))?;
         let current_tick: i32 = slot0.tick.try_into().unwrap_or(0);
         let tick_spacing: i32 = pool_contract
             .tickSpacing()
@@ -506,7 +511,7 @@ impl DexProtocol for UniswapV3 {
         let mut L: i128 = 0; // 누적 active liquidity
         for (idx, &lower) in lower_ticks.iter().enumerate() {
             if let Some(net) = tick_liqnet.get(&lower) {
-                L += *net;
+                L = liquidity as i128 + *net;
             }
             // 마지막 lower 는 upper 가 없으므로 스킵
             if idx + 1 == lower_ticks.len() {
