@@ -4,6 +4,7 @@ import React from 'react';
 import { formatNumber, formatPrice } from '@/lib/utils';
 import { LiquidityWall } from '@/types/api';
 import { TrendingUp, TrendingDown, DollarSign, Shield } from 'lucide-react';
+import { useTokenAggregateData } from '@/hooks/useTokenAggregateData';
 
 interface StatsSummaryProps {
   totalBuyLiquidity: number;
@@ -13,6 +14,9 @@ interface StatsSummaryProps {
   currentPrice: number;
   token0Symbol: string;
   token1Symbol: string;
+  mode?: 'pair' | 'aggregate';
+  tokenAddress?: string;
+  chainId?: number;
 }
 
 export function StatsSummary({
@@ -23,9 +27,60 @@ export function StatsSummary({
   currentPrice,
   token0Symbol,
   token1Symbol,
+  mode = 'pair',
+  tokenAddress,
+  chainId = 1,
 }: StatsSummaryProps) {
-  const buyToSellRatio = totalSellLiquidity > 0 ? totalBuyLiquidity / totalSellLiquidity : 0;
-  const totalLiquidity = totalBuyLiquidity + totalSellLiquidity;
+  const { data: aggregateData } = useTokenAggregateData({
+    tokenAddress: mode === 'aggregate' ? tokenAddress : undefined,
+    dex: 'all',
+    chainId,
+  });
+
+  // Use aggregate data if in aggregate mode and data is available
+  const displayData = React.useMemo(() => {
+    if (mode === 'aggregate' && aggregateData) {
+      const buyLevels = aggregateData.price_levels.filter(level => level.side === 'Buy');
+      const sellLevels = aggregateData.price_levels.filter(level => level.side === 'Sell');
+      
+      const aggregateBuyLiquidity = buyLevels.reduce((sum, level) => sum + level.token1_liquidity, 0);
+      const aggregateSellLiquidity = sellLevels.reduce((sum, level) => sum + level.token1_liquidity, 0);
+      
+      const strongestBuy = buyLevels.length > 0 ? buyLevels.reduce((strongest, level) => 
+        level.token1_liquidity > strongest.token1_liquidity ? level : strongest, 
+        buyLevels[0]
+      ) : undefined;
+      const strongestSell = sellLevels.length > 0 ? sellLevels.reduce((strongest, level) => 
+        level.token1_liquidity > strongest.token1_liquidity ? level : strongest, 
+        sellLevels[0]
+      ) : undefined;
+
+      return {
+        totalBuyLiquidity: aggregateBuyLiquidity,
+        totalSellLiquidity: aggregateSellLiquidity,
+        strongestBuyLevel: strongestBuy,
+        strongestSellLevel: strongestSell,
+        currentPrice: aggregateData.current_price,
+        token0Symbol: aggregateData.token0.symbol,
+        token1Symbol: aggregateData.token1.symbol,
+        isAggregate: true,
+      };
+    }
+
+    return {
+      totalBuyLiquidity,
+      totalSellLiquidity,
+      strongestBuyWall,
+      strongestSellWall,
+      currentPrice,
+      token0Symbol,
+      token1Symbol,
+      isAggregate: false,
+    };
+  }, [mode, aggregateData, totalBuyLiquidity, totalSellLiquidity, strongestBuyWall, strongestSellWall, currentPrice, token0Symbol, token1Symbol]);
+
+  const buyToSellRatio = displayData.totalSellLiquidity > 0 ? displayData.totalBuyLiquidity / displayData.totalSellLiquidity : 0;
+  const totalLiquidity = displayData.totalBuyLiquidity + displayData.totalSellLiquidity;
 
   return (
     <div className="space-y-6">
@@ -40,9 +95,9 @@ export function StatsSummary({
               <span className="text-sm font-medium text-gray-700">Current Price</span>
             </div>
             <p className="text-2xl font-bold text-gray-900">
-              {formatPrice(currentPrice, token1Symbol)}
+              {formatPrice(displayData.currentPrice, displayData.token1Symbol)}
             </p>
-            <p className="text-xs text-gray-500">{token0Symbol}/{token1Symbol}</p>
+            <p className="text-xs text-gray-500">{displayData.token0Symbol}/{displayData.token1Symbol}</p>
           </div>
           
           <div className="text-center">
@@ -51,9 +106,11 @@ export function StatsSummary({
               <span className="text-sm font-medium text-gray-700">Total Liquidity</span>
             </div>
             <p className="text-2xl font-bold text-gray-900">
-              {formatNumber(totalLiquidity, { compact: true })} {token1Symbol}
+              {formatNumber(totalLiquidity, { compact: true })} {displayData.token1Symbol}
             </p>
-            <p className="text-xs text-gray-500">Across all DEXes</p>
+            <p className="text-xs text-gray-500">
+              {displayData.isAggregate ? 'Aggregate across pairs' : 'Across all DEXes'}
+            </p>
           </div>
         </div>
       </div>
@@ -73,10 +130,10 @@ export function StatsSummary({
             </div>
             <div className="text-right">
               <p className="font-bold text-green-900">
-                {formatNumber(totalBuyLiquidity, { compact: true })} {token1Symbol}
+                {formatNumber(displayData.totalBuyLiquidity, { compact: true })} {displayData.token1Symbol}
               </p>
               <p className="text-sm text-green-700">
-                {((totalBuyLiquidity / totalLiquidity) * 100).toFixed(1)}%
+                {((displayData.totalBuyLiquidity / totalLiquidity) * 100).toFixed(1)}%
               </p>
             </div>
           </div>
@@ -91,10 +148,10 @@ export function StatsSummary({
             </div>
             <div className="text-right">
               <p className="font-bold text-red-900">
-                {formatNumber(totalSellLiquidity, { compact: true })} {token1Symbol}
+                {formatNumber(displayData.totalSellLiquidity, { compact: true })} {displayData.token1Symbol}
               </p>
               <p className="text-sm text-red-700">
-                {((totalSellLiquidity / totalLiquidity) * 100).toFixed(1)}%
+                {((displayData.totalSellLiquidity / totalLiquidity) * 100).toFixed(1)}%
               </p>
             </div>
           </div>
@@ -110,7 +167,7 @@ export function StatsSummary({
           <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
             <div
               className="bg-green-500 h-2 rounded-full"
-              style={{ width: `${(totalBuyLiquidity / totalLiquidity) * 100}%` }}
+              style={{ width: `${(displayData.totalBuyLiquidity / totalLiquidity) * 100}%` }}
             ></div>
           </div>
         </div>
@@ -121,20 +178,26 @@ export function StatsSummary({
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Strongest Walls</h3>
         
         <div className="space-y-4">
-          {strongestBuyWall && (
+          {((displayData.isAggregate && displayData.strongestBuyLevel) || (!displayData.isAggregate && displayData.strongestBuyWall)) && (
             <div className="p-3 border border-green-200 rounded-lg">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-green-800">Strongest Buy Wall</span>
                 <span className="text-sm font-bold text-green-900">
-                  {formatNumber(strongestBuyWall.liquidity_value, { compact: true })} {token1Symbol}
+                  {displayData.isAggregate ? 
+                    formatNumber(displayData.strongestBuyLevel!.token1_liquidity, { compact: true }) :
+                    formatNumber(displayData.strongestBuyWall!.liquidity_value, { compact: true })
+                  } {displayData.token1Symbol}
                 </span>
               </div>
               <p className="text-sm text-gray-600">
-                {formatPrice(strongestBuyWall.price_lower, token1Symbol)} - {formatPrice(strongestBuyWall.price_upper, token1Symbol)}
+                {displayData.isAggregate ? 
+                  `${formatPrice(displayData.strongestBuyLevel!.lower_price, displayData.token1Symbol)} - ${formatPrice(displayData.strongestBuyLevel!.upper_price, displayData.token1Symbol)}` :
+                  `${formatPrice(displayData.strongestBuyWall!.price_lower, displayData.token1Symbol)} - ${formatPrice(displayData.strongestBuyWall!.price_upper, displayData.token1Symbol)}`
+                }
               </p>
-              {Object.keys(strongestBuyWall.dex_sources).length > 0 && (
+              {!displayData.isAggregate && displayData.strongestBuyWall && Object.keys(displayData.strongestBuyWall.dex_sources).length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1">
-                  {Object.entries(strongestBuyWall.dex_sources).map(([dex, amount]) => (
+                  {Object.entries(displayData.strongestBuyWall.dex_sources).map(([dex, amount]) => (
                     <span
                       key={dex}
                       className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded"
@@ -144,23 +207,36 @@ export function StatsSummary({
                   ))}
                 </div>
               )}
+              {displayData.isAggregate && (
+                <div className="mt-2">
+                  <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">
+                    Aggregated across all major pairs
+                  </span>
+                </div>
+              )}
             </div>
           )}
 
-          {strongestSellWall && (
+          {((displayData.isAggregate && displayData.strongestSellLevel) || (!displayData.isAggregate && displayData.strongestSellWall)) && (
             <div className="p-3 border border-red-200 rounded-lg">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-red-800">Strongest Sell Wall</span>
                 <span className="text-sm font-bold text-red-900">
-                  {formatNumber(strongestSellWall.liquidity_value, { compact: true })} {token1Symbol}
+                  {displayData.isAggregate ? 
+                    formatNumber(displayData.strongestSellLevel!.token1_liquidity, { compact: true }) :
+                    formatNumber(displayData.strongestSellWall!.liquidity_value, { compact: true })
+                  } {displayData.token1Symbol}
                 </span>
               </div>
               <p className="text-sm text-gray-600">
-                {formatPrice(strongestSellWall.price_lower, token1Symbol)} - {formatPrice(strongestSellWall.price_upper, token1Symbol)}
+                {displayData.isAggregate ? 
+                  `${formatPrice(displayData.strongestSellLevel!.lower_price, displayData.token1Symbol)} - ${formatPrice(displayData.strongestSellLevel!.upper_price, displayData.token1Symbol)}` :
+                  `${formatPrice(displayData.strongestSellWall!.price_lower, displayData.token1Symbol)} - ${formatPrice(displayData.strongestSellWall!.price_upper, displayData.token1Symbol)}`
+                }
               </p>
-              {Object.keys(strongestSellWall.dex_sources).length > 0 && (
+              {!displayData.isAggregate && displayData.strongestSellWall && Object.keys(displayData.strongestSellWall.dex_sources).length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1">
-                  {Object.entries(strongestSellWall.dex_sources).map(([dex, amount]) => (
+                  {Object.entries(displayData.strongestSellWall.dex_sources).map(([dex, amount]) => (
                     <span
                       key={dex}
                       className="px-2 py-1 bg-red-100 text-red-800 text-xs rounded"
@@ -168,6 +244,13 @@ export function StatsSummary({
                       {dex}: {formatNumber(amount, { compact: true })}
                     </span>
                   ))}
+                </div>
+              )}
+              {displayData.isAggregate && (
+                <div className="mt-2">
+                  <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">
+                    Aggregated across all major pairs
+                  </span>
                 </div>
               )}
             </div>

@@ -134,6 +134,10 @@ fn routes(state: Arc<AppState>) -> Router {
         .route("/v1/tokens/:chain_id/:address", get(get_token_info))
         .route("/v1/pools/:dex/:chain_id", get(get_pools_by_dex))
         .route("/v1/chains/:chain_id/pools", get(get_all_pools))
+        .route(
+            "/v1/tokens/:token1_addr/aggregate/:dex/:chain_id",
+            get(get_token_aggregate_liquidity),
+        )
         .with_state(state)
 }
 
