@@ -170,6 +170,44 @@ impl Indexer {
         Ok(())
     }
 
+    pub async fn fetch_light(&self) -> Result<(), Error> {
+        info!("Starting indexer fetch light mode (light_mode_pools: {:?})...", LIGHT_MODE_POOLS);
+        
+        // Fetch all pools from each DEX
+        for (dex_name, dex) in &self.dexes {
+            info!("Fetching pools for DEX: {}", dex_name);
+            // TODO: use get_all_pools_with_addresses instead of get_all_pools
+            match dex.get_all_pools().await {
+                Ok(pools) => {
+                    // Filter pools to only include light mode pools
+                    let light_pools: Vec<_> = pools
+                        .into_iter()
+                        .filter(|pool| {
+                            LIGHT_MODE_POOLS.contains(&pool.address.to_string().as_str())
+                        })
+                        .collect();
+                    
+                    info!("Found {} light mode pools for {} (filtered from total)", light_pools.len(), dex_name);
+                    
+                    for pool in light_pools {
+                        match self.process_pool(&pool).await {
+                            Ok(_) => debug!("Processed pool {} on {}", pool.address, pool.dex),
+                            Err(e) => warn!(
+                                "Failed to process pool {} on {}: {}",
+                                pool.address, pool.dex, e
+                            ),
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to fetch pools for {}: {}", dex_name, e);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Processes a liquidity pool by retrieving and storing its liquidity distribution.
     ///
     /// Attempts to obtain the DEX implementation for the given pool, fetches the pool's liquidity distribution asynchronously, and saves the result to storage.
@@ -365,6 +403,20 @@ pub async fn run_indexer_fetch(
 
     info!("Indexer running in fetch mode");
     indexer.fetch().await?;
+    
+
+    Ok(())
+}
+
+pub async fn run_indexer_fetch_light(
+    config: Config,
+) -> Result<(), Error> {
+    // Initialize the database connection
+    let storage = Arc::new(SqliteStorage::new(&config.database.url)?);
+    let indexer = Indexer::new(config, storage)?;
+
+    info!("Indexer running in fetch light mode");
+    indexer.fetch_light().await?;
     
 
     Ok(())
