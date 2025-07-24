@@ -222,14 +222,24 @@ async fn get_liquidity_walls(
             dex_sources: HashMap::new(),
         })
         .collect();
-    let sell_walls = distribution
-        .price_levels
-        .iter()
-        .filter(|d| d.side == Side::Sell)
-        .map(|d| LiquidityWall {
+    let sell_distribution = distribution
+    .price_levels
+    .iter()
+    .filter(|d| d.side == Side::Sell);
+    let sell_walls_in_wall_price = 
+        sell_distribution.clone().map(|d| LiquidityWall {
             price_lower: d.lower_price,
             price_upper: d.upper_price,
             liquidity_value: d.token0_liquidity * (d.upper_price + d.lower_price) / 2.0, // displayed in token1 value
+            dex_sources: HashMap::new(),
+        })
+        .collect();
+
+    let sell_walls_in_current_price = 
+        sell_distribution.clone().map(|d| LiquidityWall {
+            price_lower: d.lower_price,
+            price_upper: d.upper_price,
+            liquidity_value: d.token0_liquidity * current_price / 2.0, // displayed in token1 value
             dex_sources: HashMap::new(),
         })
         .collect();
@@ -239,7 +249,8 @@ async fn get_liquidity_walls(
         token1,
         price: current_price,
         buy_walls,
-        sell_walls,
+        sell_walls_in_wall_price,
+        sell_walls_in_current_price,
         timestamp: chrono::Utc::now(),
     };
 

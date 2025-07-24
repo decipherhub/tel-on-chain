@@ -138,7 +138,8 @@ pub struct LiquidityWallsResponse {
     pub token1: Token,
     pub price: f64,
     pub buy_walls: Vec<LiquidityWall>,
-    pub sell_walls: Vec<LiquidityWall>,
+    pub sell_walls_in_wall_price: Vec<LiquidityWall>,
+    pub sell_walls_in_current_price: Vec<LiquidityWall>,
     pub timestamp: DateTime<Utc>,
 }
 
