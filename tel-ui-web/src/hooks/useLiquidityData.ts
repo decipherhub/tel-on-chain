@@ -2,11 +2,13 @@ import { useMemo } from 'react';
 import useSWR from 'swr';
 import { apiClient } from '@/lib/api';
 import { LiquidityWallsQuery } from '@/types/api';
+import { formatPriceRange } from '@/lib/utils';
 
 export function useLiquidityData(
   token0Address: string | null,
   token1Address: string | null,
   params?: LiquidityWallsQuery,
+  priceType: 'wall' | 'current' = 'wall',
   refreshInterval?: number
 ) {
   const key = useMemo(() => {
@@ -29,12 +31,15 @@ export function useLiquidityData(
   const processedData = useMemo(() => {
     if (!data) return null;
 
+    // Select sell walls based on price type
+    const sellWalls = priceType === 'wall' ? data.sell_walls_in_wall_price : data.sell_walls_in_current_price;
+
     // Calculate total liquidity values
     const totalBuyLiquidity = data.buy_walls.reduce(
       (sum, wall) => sum + wall.liquidity_value,
       0
     );
-    const totalSellLiquidity = data.sell_walls.reduce(
+    const totalSellLiquidity = sellWalls.reduce(
       (sum, wall) => sum + wall.liquidity_value,
       0
     );
@@ -45,24 +50,24 @@ export function useLiquidityData(
         wall.liquidity_value > strongest.liquidity_value ? wall : strongest,
       data.buy_walls[0]
     );
-    const strongestSellWall = data.sell_walls.reduce(
+    const strongestSellWall = sellWalls.reduce(
       (strongest, wall) =>
         wall.liquidity_value > strongest.liquidity_value ? wall : strongest,
-      data.sell_walls[0]
+      sellWalls[0]
     );
 
     // Prepare chart data
     const chartData = [
       ...data.buy_walls.map((wall) => ({
-        priceRange: `$${wall.price_lower.toFixed(2)} - $${wall.price_upper.toFixed(2)}`,
+        priceRange: formatPriceRange(wall.price_lower, wall.price_upper, data.token1.symbol),
         price: (wall.price_lower + wall.price_upper) / 2,
         buyLiquidity: wall.liquidity_value,
         sellLiquidity: 0,
         type: 'buy' as const,
         dexSources: wall.dex_sources,
       })),
-      ...data.sell_walls.map((wall) => ({
-        priceRange: `$${wall.price_lower.toFixed(2)} - $${wall.price_upper.toFixed(2)}`,
+      ...sellWalls.map((wall) => ({
+        priceRange: formatPriceRange(wall.price_lower, wall.price_upper, data.token1.symbol),
         price: (wall.price_lower + wall.price_upper) / 2,
         buyLiquidity: 0,
         sellLiquidity: wall.liquidity_value,
@@ -79,7 +84,7 @@ export function useLiquidityData(
       strongestSellWall,
       chartData,
     };
-  }, [data]);
+  }, [data, priceType]);
 
   return {
     data: processedData,

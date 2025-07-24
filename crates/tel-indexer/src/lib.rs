@@ -21,6 +21,13 @@ pub struct Indexer {
     dexes: HashMap<String, Box<dyn DexProtocol>>,
 }
 
+// Only these pools are indexed in light mode!
+pub const LIGHT_MODE_POOLS: [&str; 3] = [
+    "0xCBCdF9626bC03E24f779434178A73a0B4bad62eD",
+    "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640",
+    "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+];
+
 impl Indexer {
     /// Creates a new `Indexer` instance with configured providers and DEX implementations.
     ///
@@ -77,20 +84,22 @@ impl Indexer {
     /// Returns `Ok(())` if the loop is externally stopped; otherwise, runs indefinitely.
     pub async fn start(&self) {
         let light_mode: bool = true; // Only index first 10 pools for each dex. TODO: make it configurable
-        let light_mode_index_pool_count_per_dex = 10;
 
         if light_mode {
-            info!("Starting indexer in light mode... light_mode_index_pool_count_per_dex: {}", light_mode_index_pool_count_per_dex);
+            info!(
+                "Starting indexer in light mode... light_mode_pools: {:?}",
+                LIGHT_MODE_POOLS
+            );
         } else {
             info!("Starting indexer in full mode...");
         }
         let interval = Duration::from_secs(self.config.indexer.interval_secs);
         let mut interval_timer = time::interval(interval);
-        
+
         loop {
             interval_timer.tick().await;
             info!("Indexer cycle running");
-            
+
             // Process each configured DEX
             for (dex_name, dex) in &self.dexes {
                 info!("Indexing pool states from DEX: {}", dex_name);
@@ -99,8 +108,16 @@ impl Indexer {
                 match dex.get_all_pools_local().await {
                     Ok(pools) => {
                         info!("Found {} pools for {}", pools.len(), dex_name);
-                        let pools = if light_mode {
-                            pools.iter().take(light_mode_index_pool_count_per_dex).cloned().collect()
+                        let pools: Vec<Pool> = if light_mode {
+                            let light_mode_pools_addresses: Vec<Address> = LIGHT_MODE_POOLS
+                                .iter()
+                                .map(|addr| Address::from_str(addr).unwrap())
+                                .collect();
+
+                            pools
+                                .into_iter()
+                                .filter(|p| light_mode_pools_addresses.contains(&p.address))
+                                .collect()
                         } else {
                             pools
                         };

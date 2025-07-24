@@ -18,7 +18,8 @@ export interface LiquidityWallsResponse {
   token1: Token;
   price: number;
   buy_walls: LiquidityWall[];
-  sell_walls: LiquidityWall[];
+  sell_walls_in_wall_price: LiquidityWall[];
+  sell_walls_in_current_price: LiquidityWall[];
   timestamp: string;
 }
 
