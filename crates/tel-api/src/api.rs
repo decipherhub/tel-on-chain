@@ -342,7 +342,7 @@ pub async fn get_token_aggregate_liquidity(
     let dist = aggregate_liquidity_token1(
         state.storage.clone(),
         token1_address,
-        &dex,
+        "uniswap_v3",
         chain_id,
     )
     .await
