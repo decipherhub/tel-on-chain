@@ -5,7 +5,7 @@ use crate::models::{
     V3PriceLevel, V3PriceLiquidity,
 };
 use crate::providers::EthereumProvider;
-use crate::storage::{self, get_current_price, get_current_price_by_pool, get_pool_async, get_token_async, save_pool_async, save_token_async, Storage};
+use crate::storage::{self, get_pool_async, get_token_async, save_pool_async, save_token_async, Storage};
 use crate::Result;
 use alloy_primitives::{Address, B256};
 use alloy_provider::Provider;
