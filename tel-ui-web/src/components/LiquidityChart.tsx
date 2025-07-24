@@ -12,7 +12,7 @@ import {
   ReferenceLine,
   Legend,
 } from 'recharts';
-import { formatNumber, formatPrice, formatPriceRange } from '@/lib/utils';
+import { formatNumber, formatPrice } from '@/lib/utils';
 
 interface ChartDataPoint {
   priceRange: string;
@@ -80,7 +80,9 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps) => {
   );
 };
 
-const CustomXAxisTick = ({ x, y, payload }: any) => {
+const CustomXAxisTick = ({ x, y, payload }: { x?: number; y?: number; payload?: { value: string } }) => {
+  if (!payload?.value || x === undefined || y === undefined) return null;
+  
   const lines = payload.value.split('\n');
   const percentage = lines[0];
   const price = lines[1];
@@ -113,7 +115,7 @@ export function LiquidityChart({ data, currentPrice, token0Symbol, token1Symbol,
       };
     }).filter(point => Math.abs(point.percentageFromCurrent) <= scaleRange)
     .sort((a, b) => a.percentageFromCurrent - b.percentageFromCurrent);
-  }, [data, currentPrice, scaleRange]);
+  }, [data, currentPrice, scaleRange, token1Symbol]);
 
   if (!data || data.length === 0) {
     return (
