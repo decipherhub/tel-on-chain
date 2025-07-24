@@ -1,7 +1,7 @@
 use clap::Parser;
 
 use tel_core::{config, dexes::uniswap_v3};
-use tel_indexer::{run_indexer, run_indexer_fetch};
+use tel_indexer::{run_indexer, run_indexer_fetch, run_indexer_fetch_light};
 
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
@@ -25,6 +25,10 @@ struct Args {
     /// Fetch all blocks
     #[arg(long)]
     fetch_all: bool,
+
+    /// Fetch blocks for light mode pools only
+    #[arg(long)]
+    fetch_light: bool,
 }
 
 #[tokio::main]
@@ -49,6 +53,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if args.fetch_all {
         run_indexer_fetch(config).await?;
+    } else if args.fetch_light {
+        run_indexer_fetch_light(config).await?;
     } else {
         run_indexer(config, args.dex, args.pair, false).await?;
     }
