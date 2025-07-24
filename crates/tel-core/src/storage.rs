@@ -863,8 +863,8 @@ pub async fn aggregate_liquidity_token1(
         let dummy_dist = LiquidityDistribution {
             token0: Token {
                 address: token1,
-                symbol: "TOKEN".to_string(),
-                name: "Token".to_string(),
+                symbol: "DUMMY".to_string(),
+                name: "DUMMY".to_string(),
                 decimals: 18,
                 chain_id: chain_id,
             },
@@ -885,9 +885,9 @@ pub async fn aggregate_liquidity_token1(
             Some(dist) => dist,
             None => dummy_dist.clone(),
         };
-        let mut usdc_pair_distribution = match storage.get_liquidity_distribution(token1, usdc_address,dex, chain_id)?{
+        let usdc_pair_distribution = match storage.get_liquidity_distribution(token1, usdc_address,dex, chain_id)?{
             Some(dist) => dist,
-            None => return Err(Error::DexError("USDC pair distribution not found".to_string()))
+            None => dummy_dist.clone(),
         };
         let usdt_pair_distribution = match storage.get_liquidity_distribution(token1, usdt_address,dex, chain_id)?{
             Some(dist) => dist,
