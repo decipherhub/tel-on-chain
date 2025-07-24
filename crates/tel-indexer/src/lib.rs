@@ -21,9 +21,11 @@ pub struct Indexer {
     dexes: HashMap<String, Box<dyn DexProtocol>>,
 }
 
-pub const LIGHT_MODE_POOLS: [&str; 2] = [
+// Only these pools are indexed in light mode!
+pub const LIGHT_MODE_POOLS: [&str; 3] = [
     "0xCBCdF9626bC03E24f779434178A73a0B4bad62eD",
     "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640",
+    "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
 ];
 
 impl Indexer {

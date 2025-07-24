@@ -34,14 +34,21 @@ export function formatNumber(
   return currency ? `$${formatted}` : formatted;
 }
 
-export function formatPrice(price: number): string {
+export function formatPrice(price: number, token1Symbol?: string): string {
+  const suffix = token1Symbol ? ` ${token1Symbol}` : '';
+  
   if (price >= 1000) {
-    return formatNumber(price, { decimals: 2, currency: true });
+    return formatNumber(price, { decimals: 2 }) + suffix;
   }
   if (price >= 1) {
-    return formatNumber(price, { decimals: 4, currency: true });
+    return formatNumber(price, { decimals: 4 }) + suffix;
   }
-  return formatNumber(price, { decimals: 6, currency: true });
+  return formatNumber(price, { decimals: 6 }) + suffix;
+}
+
+export function formatPriceRange(priceLower: number, priceUpper: number, token1Symbol?: string): string {
+  const suffix = token1Symbol ? ` ${token1Symbol}` : '';
+  return `${formatNumber(priceLower, { decimals: 4 })} - ${formatNumber(priceUpper, { decimals: 4 })}${suffix}`;
 }
 
 export function isValidAddress(address: string): boolean {

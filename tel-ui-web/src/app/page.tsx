@@ -15,11 +15,13 @@ export default function HomePage() {
   const [filters, setFilters] = useState<{ chainId?: number; dex?: string }>({});
   const [selectedPool, setSelectedPool] = useState<Pool | null>(null);
   const [currentView, setCurrentView] = useState<'pools' | 'analysis'>('pools');
+  const [priceType, setPriceType] = useState<'wall' | 'current'>('wall');
 
   const { data, error, isLoading, refresh } = useLiquidityData(
     tokens?.token0 || null,
     tokens?.token1 || null,
-    filters
+    filters,
+    priceType
   );
 
   const handleTokensChange = (token0: string, token1: string) => {
@@ -239,6 +241,8 @@ export default function HomePage() {
                         currentPrice={data.price}
                         token0Symbol={data.token0.symbol}
                         token1Symbol={data.token1.symbol}
+                        priceType={priceType}
+                        onPriceTypeChange={setPriceType}
                       />
                     </div>
 

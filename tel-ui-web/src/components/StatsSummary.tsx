@@ -40,7 +40,7 @@ export function StatsSummary({
               <span className="text-sm font-medium text-gray-700">Current Price</span>
             </div>
             <p className="text-2xl font-bold text-gray-900">
-              {formatPrice(currentPrice)}
+              {formatPrice(currentPrice, token1Symbol)}
             </p>
             <p className="text-xs text-gray-500">{token0Symbol}/{token1Symbol}</p>
           </div>
@@ -51,7 +51,7 @@ export function StatsSummary({
               <span className="text-sm font-medium text-gray-700">Total Liquidity</span>
             </div>
             <p className="text-2xl font-bold text-gray-900">
-              {formatNumber(totalLiquidity, { currency: true, compact: true })}
+              {formatNumber(totalLiquidity, { compact: true })} {token1Symbol}
             </p>
             <p className="text-xs text-gray-500">Across all DEXes</p>
           </div>
@@ -73,7 +73,7 @@ export function StatsSummary({
             </div>
             <div className="text-right">
               <p className="font-bold text-green-900">
-                {formatNumber(totalBuyLiquidity, { currency: true, compact: true })}
+                {formatNumber(totalBuyLiquidity, { compact: true })} {token1Symbol}
               </p>
               <p className="text-sm text-green-700">
                 {((totalBuyLiquidity / totalLiquidity) * 100).toFixed(1)}%
@@ -91,7 +91,7 @@ export function StatsSummary({
             </div>
             <div className="text-right">
               <p className="font-bold text-red-900">
-                {formatNumber(totalSellLiquidity, { currency: true, compact: true })}
+                {formatNumber(totalSellLiquidity, { compact: true })} {token1Symbol}
               </p>
               <p className="text-sm text-red-700">
                 {((totalSellLiquidity / totalLiquidity) * 100).toFixed(1)}%
@@ -126,11 +126,11 @@ export function StatsSummary({
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-green-800">Strongest Buy Wall</span>
                 <span className="text-sm font-bold text-green-900">
-                  {formatNumber(strongestBuyWall.liquidity_value, { currency: true, compact: true })}
+                  {formatNumber(strongestBuyWall.liquidity_value, { compact: true })} {token1Symbol}
                 </span>
               </div>
               <p className="text-sm text-gray-600">
-                {formatPrice(strongestBuyWall.price_lower)} - {formatPrice(strongestBuyWall.price_upper)}
+                {formatPrice(strongestBuyWall.price_lower, token1Symbol)} - {formatPrice(strongestBuyWall.price_upper, token1Symbol)}
               </p>
               {Object.keys(strongestBuyWall.dex_sources).length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1">
@@ -152,11 +152,11 @@ export function StatsSummary({
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-red-800">Strongest Sell Wall</span>
                 <span className="text-sm font-bold text-red-900">
-                  {formatNumber(strongestSellWall.liquidity_value, { currency: true, compact: true })}
+                  {formatNumber(strongestSellWall.liquidity_value, { compact: true })} {token1Symbol}
                 </span>
               </div>
               <p className="text-sm text-gray-600">
-                {formatPrice(strongestSellWall.price_lower)} - {formatPrice(strongestSellWall.price_upper)}
+                {formatPrice(strongestSellWall.price_lower, token1Symbol)} - {formatPrice(strongestSellWall.price_upper, token1Symbol)}
               </p>
               {Object.keys(strongestSellWall.dex_sources).length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1">

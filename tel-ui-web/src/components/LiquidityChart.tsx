@@ -12,7 +12,7 @@ import {
   ReferenceLine,
   Legend,
 } from 'recharts';
-import { formatNumber, formatPrice } from '@/lib/utils';
+import { formatNumber, formatPrice, formatPriceRange } from '@/lib/utils';
 
 interface ChartDataPoint {
   priceRange: string;
@@ -29,6 +29,8 @@ interface LiquidityChartProps {
   currentPrice: number;
   token0Symbol: string;
   token1Symbol: string;
+  priceType: 'wall' | 'current';
+  onPriceTypeChange: (type: 'wall' | 'current') => void;
 }
 
 interface TooltipProps {
@@ -51,7 +53,7 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps) => {
       {data.buyLiquidity > 0 && (
         <div className="mb-2">
           <p className="text-green-600 font-medium">
-            Buy Liquidity: {formatNumber(data.buyLiquidity, { currency: true, compact: true })}
+            Buy Liquidity: {formatNumber(data.buyLiquidity, { compact: true })}
           </p>
         </div>
       )}
@@ -59,7 +61,7 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps) => {
       {data.sellLiquidity > 0 && (
         <div className="mb-2">
           <p className="text-red-600 font-medium">
-            Sell Liquidity: {formatNumber(data.sellLiquidity, { currency: true, compact: true })}
+            Sell Liquidity: {formatNumber(data.sellLiquidity, { compact: true })}
           </p>
         </div>
       )}
@@ -69,7 +71,7 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps) => {
           <p className="text-sm font-medium text-gray-700 mb-1">DEX Sources:</p>
           {Object.entries(data.dexSources).map(([dex, amount]) => (
             <p key={dex} className="text-xs text-gray-600">
-              {dex}: {formatNumber(amount as number, { currency: true, compact: true })}
+              {dex}: {formatNumber(amount as number, { compact: true })}
             </p>
           ))}
         </div>
@@ -95,7 +97,7 @@ const CustomXAxisTick = ({ x, y, payload }: any) => {
   );
 };
 
-export function LiquidityChart({ data, currentPrice, token0Symbol, token1Symbol }: LiquidityChartProps) {
+export function LiquidityChart({ data, currentPrice, token0Symbol, token1Symbol, priceType, onPriceTypeChange }: LiquidityChartProps) {
   const [scaleRange, setScaleRange] = useState(10); // Default 10% range
 
   // Generate percentage intervals based on scale
@@ -107,7 +109,7 @@ export function LiquidityChart({ data, currentPrice, token0Symbol, token1Symbol 
       return {
         ...point,
         percentageFromCurrent,
-        percentageLabel: `${percentageFromCurrent >= 0 ? '+' : ''}${percentageFromCurrent.toFixed(1)}%\n${formatPrice(point.price)}`
+        percentageLabel: `${percentageFromCurrent >= 0 ? '+' : ''}${percentageFromCurrent.toFixed(1)}%\n${formatPrice(point.price, token1Symbol)}`
       };
     }).filter(point => Math.abs(point.percentageFromCurrent) <= scaleRange)
     .sort((a, b) => a.percentageFromCurrent - b.percentageFromCurrent);
@@ -132,27 +134,58 @@ export function LiquidityChart({ data, currentPrice, token0Symbol, token1Symbol 
               Liquidity Distribution: {token0Symbol}/{token1Symbol}
             </h2>
             <p className="text-sm text-gray-600">
-              Current Price: {formatPrice(currentPrice)}
+              Current Price: {formatPrice(currentPrice, token1Symbol)} per {token0Symbol}
             </p>
           </div>
           
-          {/* Scale Control Slider */}
-          <div className="flex items-center space-x-3">
-            <label htmlFor="scale-range" className="text-sm font-medium text-gray-700">
-              Scale:
-            </label>
-            <div className="flex items-center space-x-2">
-              <span className="text-xs text-gray-500">±{scaleRange}%</span>
-              <input
-                id="scale-range"
-                type="range"
-                min="5"
-                max="50"
-                step="5"
-                value={scaleRange}
-                onChange={(e) => setScaleRange(Number(e.target.value))}
-                className="w-20 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
-              />
+          <div className="flex items-center space-x-6">
+            {/* Price Type Toggle */}
+            <div className="flex items-center space-x-3">
+              <label className="text-sm font-medium text-gray-700">
+                Sell Wall Price:
+              </label>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => onPriceTypeChange('wall')}
+                  className={`px-3 py-1 text-xs font-medium rounded ${
+                    priceType === 'wall'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  Wall Price
+                </button>
+                <button
+                  onClick={() => onPriceTypeChange('current')}
+                  className={`px-3 py-1 text-xs font-medium rounded ${
+                    priceType === 'current'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  Current Price
+                </button>
+              </div>
+            </div>
+
+            {/* Scale Control Slider */}
+            <div className="flex items-center space-x-3">
+              <label htmlFor="scale-range" className="text-sm font-medium text-gray-700">
+                Scale:
+              </label>
+              <div className="flex items-center space-x-2">
+                <span className="text-xs text-gray-500">±{scaleRange}%</span>
+                <input
+                  id="scale-range"
+                  type="range"
+                  min="5"
+                  max="50"
+                  step="5"
+                  value={scaleRange}
+                  onChange={(e) => setScaleRange(Number(e.target.value))}
+                  className="w-20 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                />
+              </div>
             </div>
           </div>
         </div>
