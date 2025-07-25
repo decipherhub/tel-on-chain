@@ -823,7 +823,8 @@ pub async fn aggregate_liquidity_token1(
     let Token1 = storage.get_token(token1, chain_id)?
         .ok_or(Error::InvalidAddress(token1.to_string()))?;
     let usdc_address = Address::from_str(USDC_TOKEN).unwrap();
-    let weth_price: f64 = get_current_price(storage.clone(), Address::from_str(WETH_TOKEN).unwrap(), usdc_address, dex, chain_id).await?;
+    //let weth_price: f64 = 1.0/get_current_price(storage.clone(), Address::from_str(WETH_TOKEN).unwrap(), usdc_address, dex, chain_id).await?;
+    let weth_price: f64 = get_current_price(storage.clone(), Address::from_str(WETH_TOKEN).unwrap(), usdc_address, dex, chain_id).await?;    
     let wbtc_price: f64 = get_current_price(storage.clone(), Address::from_str(WBTC_TOKEN).unwrap(),usdc_address, dex, chain_id).await?;
     let usdt_price: f64 = get_current_price(storage.clone(),  Address::from_str(USDT_TOKEN).unwrap(),usdc_address, dex, chain_id).await?;
     let dai_price: f64 = get_current_price(storage.clone(), Address::from_str(DAI_TOKEN).unwrap(), usdc_address,dex, chain_id).await?;
