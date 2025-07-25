@@ -6,6 +6,7 @@ import { ArrowLeft, Search, TrendingUp, AlertCircle, Loader2 } from 'lucide-reac
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { StatsSummary } from '@/components/StatsSummary';
+import { LiquidityChart } from '@/components/LiquidityChart';
 import { useTokenAggregateData } from '@/hooks/useTokenAggregateData';
 import { formatNumber } from '@/lib/utils';
 
@@ -14,6 +15,7 @@ export default function TokenAggregatePage() {
   const [tokenAddress, setTokenAddress] = useState('');
   const [submittedToken, setSubmittedToken] = useState<string | null>(null);
   const [chainId] = useState(1); // Default to Ethereum mainnet
+  const [priceType, setPriceType] = useState<'wall' | 'current'>('current');
 
   const { data, loading, error } = useTokenAggregateData({
     tokenAddress: submittedToken || undefined,
@@ -32,6 +34,21 @@ export default function TokenAggregatePage() {
     setTokenAddress('');
     setSubmittedToken(null);
   };
+
+  // Process aggregate data for chart visualization
+  const chartData = data?.price_levels?.filter(level => 
+    level.lower_price != null && level.upper_price != null
+  ).map(level => {
+    const price = (level.lower_price + level.upper_price) / 2;
+    return {
+      priceRange: `${level.lower_price.toFixed(4)} - ${level.upper_price.toFixed(4)}`,
+      price,
+      buyLiquidity: level.side === 'Buy' ? level.token1_liquidity : 0,
+      sellLiquidity: level.side === 'Sell' ? level.token1_liquidity : 0,
+      type: level.side.toLowerCase() as 'buy' | 'sell',
+      dexSources: {},
+    };
+  }) || [];
 
   // Example token addresses for quick testing
   const exampleTokens = [
@@ -259,6 +276,18 @@ export default function TokenAggregatePage() {
                 mode="aggregate"
                 tokenAddress={submittedToken}
                 chainId={chainId}
+              />
+            </div>
+
+            {/* Liquidity Chart */}
+            <div className="mt-8">
+              <LiquidityChart
+                data={chartData}
+                currentPrice={data.current_price}
+                token0Symbol={data.token0.symbol}
+                token1Symbol={data.token1.symbol}
+                priceType={priceType}
+                onPriceTypeChange={setPriceType}
               />
             </div>
           </div>
