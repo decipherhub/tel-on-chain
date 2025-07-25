@@ -26,8 +26,8 @@ export function TokenSelector({ onTokensChange, onFiltersChange }: TokenSelector
   
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormData>({
     defaultValues: {
-      token0: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', // WETH
-      token1: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // USDC
+      token0: '0x6982508145454Ce325dDbE47a25d4ec3d2311933', // WETH
+      token1: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', // USDC
       chainId: 1,
       dex: '',
     },
@@ -112,7 +112,7 @@ export function TokenSelector({ onTokensChange, onFiltersChange }: TokenSelector
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input
             label="Token 0 Address"
-            placeholder="0x..."
+            placeholder="0x6982508145454Ce325dDbE47a25d4ec3d2311933"
             {...register('token0', {
               required: 'Token 0 address is required',
               validate: (value) => isValidAddress(value) || 'Invalid address format',
@@ -122,7 +122,7 @@ export function TokenSelector({ onTokensChange, onFiltersChange }: TokenSelector
           
           <Input
             label="Token 1 Address"
-            placeholder="0x..."
+            placeholder="0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
             {...register('token1', {
               required: 'Token 1 address is required',
               validate: (value) => isValidAddress(value) || 'Invalid address format',
