@@ -45,7 +45,7 @@ pub trait Storage: Send + Sync {
         token1: Address,
         dex: &str,
         chain_id: u64,
-    ) -> Result<Option<LiquidityDistribution>>;
+    ) -> Result<Option<LiquidityDistribution>>; // TODO: this should return a vector of LiquidityDistribution
 
 
 }
@@ -811,13 +811,15 @@ pub async fn get_current_price(
     Ok(0.0)
 }
 
+// TODO: consider a case where token1 is in the place of token0
+// TODO: use loop
+// TODO: aggregate with equal interval
 pub async fn aggregate_liquidity_token1(
     storage: Arc<dyn Storage>,
     token1: Address,
     dex : &str,
     chain_id: u64,
 ) -> Result<LiquidityDistribution>{
-
     let Token1 = storage.get_token(token1, chain_id)?
         .ok_or(Error::InvalidAddress(token1.to_string()))?;
     let usdc_address = Address::from_str(USDC_TOKEN).unwrap();
