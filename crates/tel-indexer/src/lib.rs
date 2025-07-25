@@ -22,7 +22,7 @@ pub struct Indexer {
 }
 
 // Only these pools are indexed in light mode!
-pub const LIGHT_MODE_POOLS: [&str; 12] = [
+pub const LIGHT_MODE_POOLS: [&str; 17] = [
     "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
     "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640",
     "0xCBCdF9626bC03E24f779434178A73a0B4bad62eD",
