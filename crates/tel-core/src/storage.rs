@@ -876,7 +876,7 @@ pub async fn aggregate_liquidity_token1(
         wbtc_pair_distribution,
     ];
     let mut ret = usdc_pair_distribution.price_levels.clone();
-
+    info!("weth_price: {}", weth_price);
     for dist in distributions {
         if dist.token1.address == Address::from_str(WETH_TOKEN).unwrap() {
             for mut price in dist.price_levels {
@@ -926,7 +926,7 @@ pub async fn aggregate_liquidity_token1(
         decimals: 6,
         chain_id: chain_id,
     };
-    
+    info!("current price for {} is {}", token1, aggregate_pool.current_price);
     Ok(aggregate_pool)
 }
 
