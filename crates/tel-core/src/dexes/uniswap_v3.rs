@@ -319,9 +319,9 @@ impl DexProtocol for UniswapV3 {
     async fn get_all_pools(&self) -> Result<Vec<Pool>> {
 
         let provider = self.provider.provider();
-        let latest_block: u64 = provider.get_block_number().await.map_err(|e| Error::ProviderError(format!("get_block_number: {}", e)))?;
-        //let latest_block = 16669621; // For testing, replace with actual block number retrieval
-        let mut from_block = 12469621;
+        //let latest_block: u64 = provider.get_block_number().await.map_err(|e| Error::ProviderError(format!("get_block_number: {}", e)))?;
+        let latest_block = 12380000; // For testing, replace with actual block number retrieval
+        let mut from_block = 12378000;
         let mut all_logs = Vec::new();
         let mut i = 0;
         while from_block < latest_block {
