@@ -60,4 +60,23 @@ export interface Pool {
   last_updated_block: number;
   last_updated_timestamp: string;
   fee: number;
+}
+
+export interface PriceLiquidity {
+  side: 'Buy' | 'Sell';
+  lower_price: number;
+  upper_price: number;
+  token0_liquidity: number;
+  token1_liquidity: number;
+  timestamp: string;
+}
+
+export interface LiquidityDistribution {
+  token0: Token;
+  token1: Token;
+  current_price: number;
+  dex: string;
+  chain_id: number;
+  price_levels: PriceLiquidity[];
+  timestamp: string;
 } 

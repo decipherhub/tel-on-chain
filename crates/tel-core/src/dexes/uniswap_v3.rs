@@ -5,7 +5,7 @@ use crate::models::{
     V3PriceLevel, V3PriceLiquidity,
 };
 use crate::providers::EthereumProvider;
-use crate::storage::{get_pool_async, get_token_async, save_pool_async, save_token_async, Storage};
+use crate::storage::{self, get_pool_async, get_token_async, save_pool_async, save_token_async, Storage};
 use crate::Result;
 use alloy_primitives::{Address, B256};
 use alloy_provider::Provider;
@@ -73,6 +73,15 @@ const UNISWAP_V3_FACTORY: &str = "0x1F98431c8aD98523631AE4a59f267346ea31F984";
 const POOL_CREATED_SIG: &str = "PoolCreated(address,address,uint24,int24,address)";
 const HASH_POOL_CREATED: &str =
     "0x783cca1c0412dd0d695e784568c96da2e9c22ff989357a2e8b1d9b2b4e6b7118";
+const WETH_USDC_POOL: &str = "0xC6962004f452bE9203591991D15f6b388e09E8D0";
+const WBTC_USDC_POOL: &str = "0x99ac8ca7087fa4a2a1fb6357269965a2014abc35";
+const DAI_USDC_POOL: &str = "0x5777d92f208679db4b9778590fa3cab3ac9e2168";
+const USDT_USDC_POOL: &str = "0x3416cf6c708da44db2624d63ea0aaef7113527c6";
+const WETH_TOKEN: &str = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
+const USDC_TOKEN: &str = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+const DAI_TOKEN: &str = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
+const USDT_TOKEN: &str = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
+const WBTC_TOKEN: &str = "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599";
 pub struct UniswapV3 {
     provider: Arc<EthereumProvider>,
     factory_address: Address,
@@ -310,9 +319,9 @@ impl DexProtocol for UniswapV3 {
     async fn get_all_pools(&self) -> Result<Vec<Pool>> {
 
         let provider = self.provider.provider();
-        let latest_block: u64 = provider.get_block_number().await.map_err(|e| Error::ProviderError(format!("get_block_number: {}", e)))?;
-        //let latest_block = 16669621; // For testing, replace with actual block number retrieval
-        let mut from_block = 12469621;
+        //let latest_block: u64 = provider.get_block_number().await.map_err(|e| Error::ProviderError(format!("get_block_number: {}", e)))?;
+        let latest_block = 12380000; // For testing, replace with actual block number retrieval
+        let mut from_block = 12378000;
         let mut all_logs = Vec::new();
         let mut i = 0;
         while from_block < latest_block {
@@ -641,4 +650,8 @@ impl DexProtocol for UniswapV3 {
         }
         Ok(pools)
     }
+
+    
 }
+
+
