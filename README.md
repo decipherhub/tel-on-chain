@@ -190,9 +190,10 @@ enabled = true
   - Upbit D Conference(UDC) 2024 Speaker
   - Best Of the Best 12th Vulnerability Analysis
   - Ethcon Korea 2024 CTF Section Organizer
-- [lee2020090791](https://github.com/lee2020090791)
+- [heijiLee](https://github.com/heijiLee)
   - CS major at Hanyang University
   - 1 year internship on OSDC labs
+  - On going core developer internship (cosmos) (June 2025 - Present)
   - Blockchain core developer
 
 ## License
