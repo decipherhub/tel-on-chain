@@ -786,6 +786,57 @@ impl Storage for SqliteStorage {
 //     storage.get_pools_by_token(token0, Address::default(), chain_id)
 // }   
 
+pub async fn reverse_pair(
+    distribution: LiquidityDistribution,
+) -> Result<LiquidityDistribution> {
+    let LiquidityDistribution {
+        token0,
+        token1,
+        dex,
+        chain_id,
+        timestamp,
+        current_price,
+        price_levels,
+    } = distribution;
+
+    let reversed_levels: Vec<PriceLiquidity> = price_levels
+        .into_iter()
+        .map(|pl| PriceLiquidity {
+            side: pl.side,  // 필요하다면 Buy<->Sell도 뒤집을 수 있음
+            // 가격 구간도 상하한을 뒤집어서 역수로
+            lower_price: 1.0 / pl.upper_price,
+            upper_price: 1.0 / pl.lower_price,
+            // 토큰 유동성도 서로 스왑
+            token0_liquidity: pl.token1_liquidity,
+            token1_liquidity: pl.token0_liquidity,
+            timestamp: pl.timestamp,
+        })
+        .collect();
+
+    let reversed_price = 1.0 / current_price;
+
+    let reversed_distribution = LiquidityDistribution {
+        token0: token1,
+        token1: token0,
+        dex,
+        chain_id,
+        timestamp,
+        current_price: reversed_price,
+        price_levels: reversed_levels,
+    };
+
+    Ok(reversed_distribution)
+}
+
+pub async fn reverse_current_price_only(
+    distribution: LiquidityDistribution,
+) -> Result<LiquidityDistribution> {
+    Ok(LiquidityDistribution {
+        current_price: 1.0 / distribution.current_price,
+        ..distribution
+    })
+}
+
 
 pub async fn get_current_price(
     storage: Arc<dyn Storage>,
@@ -800,12 +851,11 @@ pub async fn get_current_price(
             // If no distribution found for (token0, token1), try (token1, token0)
             None => match storage.get_liquidity_distribution(token1, token0, dex, chain_id)?
             {
-                Some(distribution) => Some(distribution),
+                Some(distribution) => Some(reverse_current_price_only(distribution).await?),
                 None => return Ok(0.0), // Return 0.0 if no distribution found for both pairs
             },
         };
     if let Some(distribution) = liquidity_distribution {
-        // Assuming the distribution has a method to get the current price
         return Ok(distribution.current_price)
     }
     Ok(0.0)
