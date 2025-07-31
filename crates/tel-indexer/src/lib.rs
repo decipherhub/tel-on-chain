@@ -22,10 +22,17 @@ pub struct Indexer {
 }
 
 // Only these pools are indexed in light mode!
-pub const LIGHT_MODE_POOLS: [&str; 3] = [
+pub const LIGHT_MODE_POOLS: [&str; 10] = [
+    "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640",
     "0xCBCdF9626bC03E24f779434178A73a0B4bad62eD",
-    "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640",
-    "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+    "0x99ac8cA7087fA4A2A1FB6357269965A2014ABc35",
+    "0xe8f7c89C5eFa061e340f2d2F206EC78FD8f7e124",
+    "0x5777d92f208679DB4b9778590Fa3CAB3aC9e2168",
+    "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36",
+    "0xC5c134A1f112efA96003f8559Dba6fAC0BA77692",
+    "0x1d42064Fc4Beb5F8aAF85F4617AE8b3b5B8Bd801",
+    "0x9Db9e0e53058C89e5B94e29621a205198648425B",
+    "0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8",
 ];
 
 impl Indexer {
@@ -87,8 +94,8 @@ impl Indexer {
 
         if light_mode {
             info!(
-                "Starting indexer in light mode... light_mode_pools: {:?}",
-                LIGHT_MODE_POOLS
+                "Starting indexer in light mode... light_mode_index_pool_count_per_dex: {}",
+                light_mode_index_pool_count_per_dex
             );
         } else {
             info!("Starting indexer in full mode...");
@@ -108,15 +115,11 @@ impl Indexer {
                 match dex.get_all_pools_local().await {
                     Ok(pools) => {
                         info!("Found {} pools for {}", pools.len(), dex_name);
-                        let pools: Vec<Pool> = if light_mode {
-                            let light_mode_pools_addresses: Vec<Address> = LIGHT_MODE_POOLS
-                                .iter()
-                                .map(|addr| Address::from_str(addr).unwrap())
-                                .collect();
-
+                        let pools = if light_mode {
                             pools
-                                .into_iter()
-                                .filter(|p| light_mode_pools_addresses.contains(&p.address))
+                                .iter()
+                                .take(light_mode_index_pool_count_per_dex)
+                                .cloned()
                                 .collect()
                         } else {
                             pools
@@ -356,16 +359,13 @@ pub async fn run_indexer(
     Ok(())
 }
 
-pub async fn run_indexer_fetch(
-    config: Config,
-) -> Result<(), Error> {
+pub async fn run_indexer_fetch(config: Config) -> Result<(), Error> {
     // Initialize the database connection
     let storage = Arc::new(SqliteStorage::new(&config.database.url)?);
     let indexer = Indexer::new(config, storage)?;
 
     info!("Indexer running in fetch mode");
     indexer.fetch().await?;
-    
 
     Ok(())
 }

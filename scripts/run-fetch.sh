@@ -8,7 +8,7 @@ NC='\033[0m' # No Color
 echo -e "${BLUE}Starting tel-indexer to fetch all blocks...${NC}"
 
 # Run the indexer with the --fetch-all flag
-RUST_BACKTRACE=1 cargo run --bin tel-indexer -- --fetch-all
+cargo run --bin tel-indexer -- --fetch-all
 
 EXIT_CODE=$?
 

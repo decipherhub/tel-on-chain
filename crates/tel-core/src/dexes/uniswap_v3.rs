@@ -1,5 +1,5 @@
 use crate::dexes::DexProtocol;
-use crate::error::Error;
+use crate::error::Error as TelError;
 use crate::models::{
     LiquidityDistribution, Pool, PriceLiquidity, Side, Token, V3LiquidityDistribution,
     V3PriceLevel, V3PriceLiquidity,
@@ -109,17 +109,17 @@ impl UniswapV3 {
             .symbol()
             .call()
             .await
-            .map_err(|e| Error::ProviderError(format!("{e}")))?;
+            .map_err(|e| TelError::ProviderError(format!("{e}")))?;
         let name = erc20
             .name()
             .call()
             .await
-            .map_err(|e| Error::ProviderError(format!("{e}")))?;
+            .map_err(|e| TelError::ProviderError(format!("{e}")))?;
         let decimals = erc20
             .decimals()
             .call()
             .await
-            .map_err(|e| Error::ProviderError(format!("{e}")))?;
+            .map_err(|e| TelError::ProviderError(format!("{e}")))?;
         let token = Token {
             address: addr,
             symbol,
@@ -196,7 +196,7 @@ impl UniswapV3 {
             .provider()
             .get_logs(&filter)
             .await
-            .map_err(|e| Error::ProviderError(format!("get_logs: {}", e)))
+            .map_err(|e| TelError::ProviderError(format!("get_logs: {}", e)))
     }
 
     /// Return an empty LiquidityDistribution
@@ -235,12 +235,13 @@ impl UniswapV3 {
         }
     }
 
-    // Add a new async function for active range calculation
+    /// Calculates the amount of token0 / token1 that is effectively locked
+    /// in the **active** tick range (`tick_idx .. tick_idx + tick_spacing`).
     async fn calculate_active_range_tokens_locked(
         &self,
         tick_idx: i32,
         liq_gross: u128,
-        liq_net: i128,
+        liq_net: i128, // may be 0 for active range
         tick_spacing: i32,
         fee: u32,
         slot0_sqrt_price_x96: U256,
@@ -249,69 +250,94 @@ impl UniswapV3 {
     ) -> std::result::Result<V3PriceLevel, crate::Error> {
         use uniswap_v3_sdk::prelude::*;
         use uniswap_v3_sdk::utils::price_tick_conversions::tick_to_price;
+
+        // -----------------------------------------------------------------
+        // ① mock_ticks: lower = +liq_net , upper = -liq_net
+        //    (총합 0, validate_list 통과)
+        // -----------------------------------------------------------------
+        let lower_idx = tick_idx;
+        let upper_idx = tick_idx + tick_spacing;
+
         let mock_ticks = vec![
             Tick {
-                index: I24::try_from(tick_idx).unwrap(),
+                index: I24::try_from(lower_idx).unwrap(),
                 liquidity_gross: liq_gross,
-                liquidity_net: -liq_net,
+                liquidity_net: liq_net, // +L  (range enters)
             },
             Tick {
-                index: I24::try_from(tick_idx + tick_spacing).unwrap(),
+                index: I24::try_from(upper_idx).unwrap(),
                 liquidity_gross: liq_gross,
-                liquidity_net: liq_net,
+                liquidity_net: -liq_net, // -L  (range exits)
             },
         ];
+
+        // -----------------------------------------------------------------
+        // ② Pool simulator over just this active range
+        // -----------------------------------------------------------------
         let pool_sim = Pool::new_with_tick_data_provider(
             uni_token0.clone(),
             uni_token1.clone(),
             FeeAmount::try_from(fee).unwrap_or(FeeAmount::MEDIUM),
             U160::from(slot0_sqrt_price_x96.to::<u128>()),
-            liq_gross,
+            liq_gross, // current active liquidity
             TickListDataProvider::new(mock_ticks.clone(), I24::try_from(tick_spacing).unwrap()),
         )
         .map_err(|e| crate::Error::ProviderError(format!("Pool: {e}")))?;
 
-        // bottomOfRangePrice
+        // -----------------------------------------------------------------
+        // ③ bottom‑of‑range calculation (swap token0 → token1)
+        // -----------------------------------------------------------------
         let bottom_sqrt_x96 = {
-            let sqrt: U256 = TickMath::get_sqrt_ratio_at_tick(I24::try_from(tick_idx).unwrap())
+            let sqrt: U256 = TickMath::get_sqrt_ratio_at_tick(I24::try_from(lower_idx).unwrap())
                 .map_err(|e| crate::Error::ProviderError(format!("TickMath: {e}")))?;
             sqrt.to::<u128>()
         };
+
         let max_amount_token0 = CurrencyAmount::from_raw_amount(uni_token0.clone(), u128::MAX)
             .map_err(|e| crate::Error::ProviderError(format!("CurrencyAmount: {e}")))?;
+
         let token1_amount = pool_sim
             .get_output_amount(&max_amount_token0, Some(U160::from(bottom_sqrt_x96)))
             .await
             .map_err(|e| crate::Error::ProviderError(format!("get_output_amount: {e}")))?;
+
         let price = tick_to_price(
             uni_token0.clone(),
             uni_token1.clone(),
-            I24::try_from(tick_idx).unwrap(),
+            I24::try_from(lower_idx).unwrap(),
         )
         .map_err(|e| crate::Error::ProviderError(format!("tick_to_price: {e}")))?;
+
         let amount0_locked = match price.invert().quote(&token1_amount) {
             Ok(q) => q.to_exact().parse::<f64>().unwrap_or(0.0),
             Err(e) => return Err(crate::Error::ProviderError(format!("quote error: {e}"))),
         };
 
-        // topOfRangePrice
+        // -----------------------------------------------------------------
+        // ④ top‑of‑range calculation (swap token1 → token0)
+        // -----------------------------------------------------------------
         let top_sqrt_x96 = {
-            let sqrt: U256 =
-                TickMath::get_sqrt_ratio_at_tick(I24::try_from(tick_idx + tick_spacing).unwrap())
-                    .map_err(|e| crate::Error::ProviderError(format!("TickMath: {e}")))?;
+            let sqrt: U256 = TickMath::get_sqrt_ratio_at_tick(I24::try_from(upper_idx).unwrap())
+                .map_err(|e| crate::Error::ProviderError(format!("TickMath: {e}")))?;
             sqrt.to::<u128>()
         };
+
         let max_amount_token1 = CurrencyAmount::from_raw_amount(uni_token1.clone(), u128::MAX)
             .map_err(|e| crate::Error::ProviderError(format!("CurrencyAmount: {e}")))?;
+
         let token0_amount = pool_sim
             .get_output_amount(&max_amount_token1, Some(U160::from(top_sqrt_x96)))
             .await
             .map_err(|e| crate::Error::ProviderError(format!("get_output_amount: {e}")))?;
+
         let amount1_locked = match price.quote(&token0_amount) {
             Ok(q) => q.to_exact().parse::<f64>().unwrap_or(0.0),
             Err(e) => return Err(crate::Error::ProviderError(format!("quote error: {e}"))),
         };
 
+        // -----------------------------------------------------------------
+        // ⑤ 결과 구조체
+        // -----------------------------------------------------------------
         Ok(V3PriceLevel {
             tick_idx,
             price: price
@@ -356,7 +382,10 @@ impl DexProtocol for UniswapV3 {
         let pool_result = get_pool_async(self.storage.clone(), pool_address).await;
         match pool_result {
             Ok(Some(pool)) => Ok(pool),
-            Ok(None) => Err(Error::DexError(format!("Pool not found: {}", pool_address))),
+            Ok(None) => Err(crate::Error::DexError(format!(
+                "Pool not found: {}",
+                pool_address
+            ))),
             Err(e) => Err(e),
         }
     }
@@ -490,66 +519,42 @@ impl DexProtocol for UniswapV3 {
         Ok(0.0)
     }
 
-    // get_v3_liquidity_distribution: behaves identically to the JS SDK implementation
     async fn get_v3_liquidity_distribution(
         &self,
         pool_address: Address,
-    ) -> std::result::Result<V3LiquidityDistribution, Error> {
+    ) -> std::result::Result<V3LiquidityDistribution, TelError> {
         use uniswap_v3_sdk::prelude::*;
         use uniswap_v3_sdk::utils::price_tick_conversions::tick_to_price;
-        // --- Load metadata as in JS ---
-        let pool = match self.get_pool(pool_address).await {
-            Ok(p) => p,
-            Err(_) => {
-                let dummy = Token {
-                    address: pool_address,
-                    symbol: String::new(),
-                    name: String::new(),
-                    decimals: 0,
-                    chain_id: self.chain_id(),
-                };
-                return Ok(Self::empty_v3_dist(
-                    &dummy,
-                    &dummy,
-                    &self.name().to_lowercase(),
-                    self.chain_id(),
-                ));
-            }
-        };
+
+        // ── ① 온체인 상태 ──────────────────────────────────────────────────────────
+        let pool = self.get_pool(pool_address).await?;
         let token0 = &pool.tokens[0];
         let token1 = &pool.tokens[1];
-
-        // ---- on‑chain 현재 sqrtPriceX96, tick, spacing ---------------------------
         let pool_contract = IUniswapV3Pool::new(pool_address, self.provider.provider());
         let slot0 = pool_contract
             .slot0()
             .call()
             .await
             .map_err(|e| crate::Error::ProviderError(format!("slot0: {e}")))?;
-        let sqrt_price_x96: u128 = slot0.sqrtPriceX96.to();
         let current_tick: i32 = slot0.tick.try_into().unwrap_or(0);
-        let tick_spacing: i32 = pool_contract
+        let tick_spacing: i32 = pool_c
             .tickSpacing()
             .call()
             .await
-            .map_err(|e| Error::ProviderError(format!("tickSpacing: {e}")))?
+            .map_err(|e| crate::Error::ProviderError(format!("tickSpacing: {e}")))?
             .try_into()
             .unwrap_or(1);
         let fee = pool.fee as u32; // Uniswap SDK expects u32
                                    // --- populated ticks ---
-        let (_ignored, populated) = self.get_active_ticks(pool_address).await?;
+        let (_, populated) = self.get_active_ticks(pool_address).await?;
         if populated.is_empty() {
             return Ok(Self::empty_v3_dist(
                 token0,
                 token1,
-                &self.name().to_lowercase(),
+                self.name(),
                 self.chain_id(),
             ));
         }
-        // ===== DEBUG: Populated tick data =====
-        println!("[DEBUG] Populated ticks: {:?}", populated);
-        // ===== END DEBUG =====
-        // Rust Token 변환 (SDK용)
         let uni_token0 = uniswap_sdk_core::prelude::Token::new(
             self.chain_id(),
             token0.address,
@@ -559,7 +564,7 @@ impl DexProtocol for UniswapV3 {
             0,
             0,
         );
-        let uni_token1 = uniswap_sdk_core::prelude::Token::new(
+        let uni_t1 = uniswap_sdk_core::prelude::Token::new(
             self.chain_id(),
             token1.address,
             token1.decimals,
@@ -568,98 +573,402 @@ impl DexProtocol for UniswapV3 {
             0,
             0,
         );
-        // uni_token0, uni_token1은 오직 Pool, CurrencyAmount 등 SDK 타입에만 사용하세요.
         let mut v3_levels = Vec::with_capacity(populated.len());
-        for pair in populated.windows(2) {
-            let (tick_idx_a, liq_gross_a, liq_net_a) = pair[0];
-            let (tick_idx_b, liq_gross_b, liq_net_b) = pair[1];
-            let net_diff = liq_net_b - liq_net_a;
-            // ===== DEBUG: Per-tick-pair values =====
-            println!(
-                "[DEBUG] tick_idx_a: {}, liq_gross_a: {}, liq_net_a: {}, tick_idx_b: {}, liq_gross_b: {}, liq_net_b: {}, net_diff: {}",
-                tick_idx_a, liq_gross_a, liq_net_a, tick_idx_b, liq_gross_b, liq_net_b, net_diff
-            );
-            // ===== END DEBUG =====
-            if net_diff == 0 {
-                println!(
-                    "[DEBUG] Skipping tick pair ({}, {}) due to ZERO_NET",
-                    tick_idx_a, tick_idx_b
-                );
+        for (tick_idx_a, liq_gross_a, liq_net_a) in &populated {
+            // For the active range (current tick), use a separate function
+            if *tick_idx_a == current_tick {
+                let v3_level = self
+                    .calculate_active_range_tokens_locked(
+                        *tick_idx_a,
+                        *liq_gross_a,
+                        0, // liq_net is not used in the function
+                        tick_spacing,
+                        fee,
+                        U256::from(slot0.sqrtPriceX96),
+                        &uni_token0,
+                        &uni_token1,
+                    )
+                    .await?;
+                v3_levels.push(v3_level);
                 continue;
             }
-            let mock_ticks = vec![
-                (tick_idx_a, liq_gross_a, liq_net_a),
-                (tick_idx_b, liq_gross_b, liq_net_b),
+            // Build mock_ticks exactly as in the frontend/JS logic
+            let (tick_a, tick_b) = if -*liq_net_a < 0 {
+                (
+                    Tick {
+                        index: I24::try_from(*tick_idx_a + tick_spacing).unwrap(),
+                        liquidity_gross: *liq_gross_a,
+                        liquidity_net: *liq_net_a,
+                    },
+                    Tick {
+                        index: I24::try_from(*tick_idx_a).unwrap(),
+                        liquidity_gross: *liq_gross_a,
+                        liquidity_net: -*liq_net_a,
+                    },
+                )
+            } else {
+                (
+                    Tick {
+                        index: I24::try_from(*tick_idx_a).unwrap(),
+                        liquidity_gross: *liq_gross_a,
+                        liquidity_net: -*liq_net_a,
+                    },
+                    Tick {
+                        index: I24::try_from(*tick_idx_a + tick_spacing).unwrap(),
+                        liquidity_gross: *liq_gross_a,
+                        liquidity_net: *liq_net_a,
+                    },
+                )
+            };
+            let mut mock_ticks = vec![
+                Tick {
+                    index: I24::try_from(*tick_idx_a).unwrap(),
+                    liquidity_gross: *liq_gross_a,
+                    liquidity_net: -*liq_net_a,
+                },
+                Tick {
+                    index: I24::try_from(*tick_idx_a + tick_spacing).unwrap(),
+                    liquidity_gross: *liq_gross_a,
+                    liquidity_net: *liq_net_a,
+                },
             ];
-            // ===== DEBUG: mock_ticks =====
-            println!("[DEBUG] mock_ticks: {:?}", mock_ticks);
-            // ===== END DEBUG =====
-            // liquidityActive: 누적값이 아니라 해당 tick의 gross/net을 사용 (JS와 동일)
-            let liquidity_active = liq_gross_a;
-            let sqrt_price_x96 =
-                TickMath::get_sqrt_ratio_at_tick(I24::try_from(tick_idx_a).unwrap())
-                    .unwrap_or(U256::ZERO)
-                    .to::<u128>();
-            let tick_data_provider = TickListDataProvider::new(
-                mock_ticks
-                    .iter()
-                    .map(|(tick, gross, net)| Tick {
-                        index: *tick,
-                        liquidity_gross: *gross,
-                        liquidity_net: *net,
-                    })
-                    .collect(),
-                tick_spacing,
+            mock_ticks.sort_by_key(|tick| tick.index);
+            // Debug print for SORTED panic investigation
+            println!(
+                "DEBUG: tick_idx_a={}, tick_spacing={}, liq_gross_a={}, liq_net_a={}",
+                tick_idx_a, tick_spacing, liq_gross_a, liq_net_a
             );
+            println!("DEBUG: mock_ticks={:?}", mock_ticks);
+            println!(
+                "DEBUG: mock_ticks indices: [{}, {}]",
+                mock_ticks[0].index, mock_ticks[1].index
+            );
+            // if mock_ticks[0].liquidity_net < 0 {
+            //     continue;
+            // }
+            // let sum: i128 = mock_ticks.iter().map(|x| x.liquidity_net).sum();
+            // if sum != 0 {
+            //     continue;
+            // }
+
+            let liquidity_active = *liq_gross_a;
+            let sqrt_price_x96 = {
+                let sqrt: U256 =
+                    TickMath::get_sqrt_ratio_at_tick(I24::try_from(*tick_idx_a).unwrap())
+                        .map_err(|e| crate::Error::ProviderError(format!("TickMath: {e}")))?;
+                sqrt.to::<u128>()
+            };
+            let tick_data_provider =
+                TickListDataProvider::new(mock_ticks.clone(), I24::try_from(tick_spacing).unwrap());
             let pool_sim = Pool::new_with_tick_data_provider(
-                uni_token0.clone(),
-                uni_token1.clone(),
+                uni_t0.clone(),
+                uni_t1.clone(),
                 FeeAmount::try_from(fee).unwrap_or(FeeAmount::MEDIUM),
                 U160::from(sqrt_price_x96),
                 liquidity_active,
                 tick_data_provider,
             )
-            .unwrap();
-            // swap 시뮬레이션 (JS와 동일)
-            let next_sqrt_x96 =
-                TickMath::get_sqrt_ratio_at_tick(I24::try_from(tick_idx_a - tick_spacing).unwrap())
-                    .unwrap_or(U256::ZERO)
-                    .to::<u128>();
-            let max_amount_token0 =
-                CurrencyAmount::from_raw_amount(uni_token0.clone(), u128::MAX).unwrap();
+            .map_err(|e| crate::Error::ProviderError(format!("Pool: {e}")))?;
+            let next_sqrt_x96 = {
+                let sqrt: U256 = TickMath::get_sqrt_ratio_at_tick(
+                    I24::try_from(*tick_idx_a - tick_spacing).unwrap(),
+                )
+                .map_err(|e| crate::Error::ProviderError(format!("TickMath: {e}")))?;
+                sqrt.to::<u128>()
+            };
+            let max_amount_token0 = CurrencyAmount::from_raw_amount(uni_token0.clone(), u128::MAX)
+                .map_err(|e| crate::Error::ProviderError(format!("CurrencyAmount: {e}")))?;
             if U160::from(next_sqrt_x96) >= U160::from(sqrt_price_x96) {
                 continue;
             }
-            let token1_amount = futures::executor::block_on(
-                pool_sim.get_output_amount(&max_amount_token0, Some(U160::from(next_sqrt_x96))),
+            let token1_amount = pool_sim
+                .get_output_amount(&max_amount_token0, Some(U160::from(next_sqrt_x96)))
+                .await
+                .map_err(|e| crate::Error::ProviderError(format!("get_output_amount: {e}")))?;
+            let price = tick_to_price(
+                uni_token0.clone(),
+                uni_token1.clone(),
+                I24::try_from(*tick_idx_a).unwrap(),
             )
-            .unwrap();
-            let price = Self::tick_to_price(tick_idx_a, token0.decimals, token1.decimals);
-            let amount0_locked = token1_amount.numerator().to_f64().unwrap()
-                / token1_amount.denominator().to_f64().unwrap()
-                / price;
-            let amount1_locked = token1_amount.numerator().to_f64().unwrap()
-                / token1_amount.denominator().to_f64().unwrap();
+            .map_err(|e| crate::Error::ProviderError(format!("tick_to_price: {e}")))?;
+            let amount0_locked = match price.invert().quote(&token1_amount) {
+                Ok(q) => q.to_exact().parse::<f64>().unwrap_or(0.0),
+                Err(e) => return Err(crate::Error::ProviderError(format!("quote error: {e}"))),
+            };
+            let amount1_locked = token1_amount.to_exact().parse::<f64>().unwrap_or(0.0);
             v3_levels.push(V3PriceLevel {
-                tick_idx: tick_idx_a,
-                price: Self::tick_to_price(tick_idx_a, token0.decimals, token1.decimals),
-                tick_price: 1.0001_f64.powi(tick_idx_a),
+                tick_idx: *tick_idx_a,
+                price: price
+                    .to_significant(12, Some(Rounding::RoundDown))
+                    .unwrap_or_else(|_| "0".to_string())
+                    .parse::<f64>()
+                    .unwrap_or(0.0),
+                tick_price: 1.0001_f64.powi(*tick_idx_a),
                 token0_liquidity: amount0_locked,
                 token1_liquidity: amount1_locked,
                 timestamp: Utc::now(),
-            });
+            })
         }
-        v3_levels.sort_by(|a, b| a.price.partial_cmp(&b.price).unwrap());
+
+        // ── ④ 레벨 누적 ────────────────────────────────────────────────────────────
+        let mut levels = Vec::<V3PriceLevel>::with_capacity(ticks.len());
+        let mut running_liq = current_liq as i128;
+
+        // 위쪽
+        for (idx, gross, net) in ticks.iter().filter(|(t, _, _)| *t >= current_tick) {
+            let lvl = build_level(
+                &uni_t0,
+                &uni_t1,
+                fee,
+                *idx,
+                tick_spacing,
+                running_liq.max(0) as u128,
+                *gross,
+                *net,
+                sqrt_price_x96_cur,
+                current_tick,
+            )
+            .await?;
+            levels.push(lvl);
+            running_liq += *net as i128;
+        }
+
+        // 아래쪽
+        running_liq = current_liq as i128;
+        for (idx, gross, net) in ticks.iter().rev().filter(|(t, _, _)| *t < current_tick) {
+            running_liq -= *net as i128;
+            let lvl = build_level(
+                &uni_t0,
+                &uni_t1,
+                fee,
+                *idx,
+                tick_spacing,
+                running_liq.max(0) as u128,
+                *gross,
+                *net,
+                sqrt_price_x96_cur,
+                current_tick,
+            )
+            .await?;
+            levels.push(lvl);
+        }
+
+        // ── ⑤ 결과 정렬·반환 ───────────────────────────────────────────────────────
+        levels.sort_by(|a, b| a.price.partial_cmp(&b.price).unwrap());
         Ok(V3LiquidityDistribution {
             token0: token0.clone(),
             token1: token1.clone(),
-            dex: self.name().to_lowercase(),
+            dex: self.name().into(),
             chain_id: self.chain_id(),
             current_tick,
-            price_levels: v3_levels,
+            price_levels: levels,
             timestamp: Utc::now(),
         })
     }
+
+    // -----------------------------------------------------------------------------
+    // get_v3_liquidity_distribution
+    // -----------------------------------------------------------------------------
+    // async fn get_v3_liquidity_distribution(
+    //     &self,
+    //     pool_address: Address,
+    // ) -> std::result::Result<V3LiquidityDistribution, Error> {
+    //     use uniswap_v3_sdk::prelude::*;
+    //     use uniswap_v3_sdk::utils::price_tick_conversions::tick_to_price;
+
+    //     // ── 메타데이터 로드 (기존 로직) ─────────────────────────────────────────────
+    //     let pool = match self.get_pool(pool_address).await {
+    //         Ok(p) => p,
+    //         Err(_) => {
+    //             let dummy = Token {
+    //                 address: pool_address,
+    //                 symbol: String::new(),
+    //                 name: String::new(),
+    //                 decimals: 0,
+    //                 chain_id: self.chain_id(),
+    //             };
+    //             return Ok(Self::empty_v3_dist(
+    //                 &dummy,
+    //                 &dummy,
+    //                 &self.name().to_lowercase(),
+    //                 self.chain_id(),
+    //             ));
+    //         }
+    //     };
+    //     let token0 = &pool.tokens[0];
+    //     let token1 = &pool.tokens[1];
+
+    //     // ── 온체인 풀 상태 ─────────────────────────────────────────────────────────
+    //     let pool_contract = IUniswapV3Pool::new(pool_address, self.provider.provider());
+    //     let slot0 = pool_contract
+    //         .slot0()
+    //         .call()
+    //         .await
+    //         .map_err(|e| crate::Error::ProviderError(format!("slot0: {e}")))?;
+    //     let current_tick: i32 = slot0.tick.try_into().unwrap_or(0);
+    //     let tick_spacing: i32 = pool_contract
+    //         .tickSpacing()
+    //         .call()
+    //         .await
+    //         .map_err(|e| crate::Error::ProviderError(format!("tickSpacing: {e}")))?
+    //         .try_into()
+    //         .unwrap_or(1);
+    //     let fee = pool.fee as u32;
+
+    //     // ── 활성 tick 조회 ─────────────────────────────────────────────────────────
+    //     let (_, populated) = self.get_active_ticks(pool_address).await?;
+    //     if populated.is_empty() {
+    //         return Ok(Self::empty_v3_dist(
+    //             token0,
+    //             token1,
+    //             &self.name().to_lowercase(),
+    //             self.chain_id(),
+    //         ));
+    //     }
+
+    //     // ── SDK Token 래퍼 생성 (기존 로직) ────────────────────────────────────────
+    //     let uni_token0 = uniswap_sdk_core::prelude::Token::new(
+    //         self.chain_id(),
+    //         token0.address,
+    //         token0.decimals,
+    //         Some(token0.symbol.clone()),
+    //         Some(token0.name.clone()),
+    //         0,
+    //         0,
+    //     );
+    //     let uni_token1 = uniswap_sdk_core::prelude::Token::new(
+    //         self.chain_id(),
+    //         token1.address,
+    //         token1.decimals,
+    //         Some(token1.symbol.clone()),
+    //         Some(token1.name.clone()),
+    //         0,
+    //         0,
+    //     );
+
+    //     // ── 가격 레벨 계산 ────────────────────────────────────────────────────────
+    //     let mut v3_levels = Vec::with_capacity(populated.len());
+
+    //     for (tick_idx_a, liq_gross_a, liq_net_a) in &populated {
+    //         // 활성 구간은 별도 처리 (기존 로직)
+    //         if *tick_idx_a == current_tick {
+    //             let v3_level = self
+    //                 .calculate_active_range_tokens_locked(
+    //                     *tick_idx_a,
+    //                     *liq_gross_a,
+    //                     0,
+    //                     tick_spacing,
+    //                     fee,
+    //                     U256::from(slot0.sqrtPriceX96),
+    //                     &uni_token0,
+    //                     &uni_token1,
+    //                 )
+    //                 .await?;
+    //             v3_levels.push(v3_level);
+    //             continue;
+    //         }
+
+    //         // ★★★ mock tick 구성부 수정 ★★★
+    //         // ① lower tick  : +liq_net_a
+    //         // ② upper tick  : -liq_net_a
+    //         let lower_idx = *tick_idx_a;
+    //         let upper_idx = lower_idx + tick_spacing;
+
+    //         let mock_ticks = vec![
+    //             Tick {
+    //                 index: I24::try_from(lower_idx).unwrap(),
+    //                 liquidity_gross: *liq_gross_a,
+    //                 liquidity_net: *liq_net_a, // +L
+    //             },
+    //             Tick {
+    //                 index: I24::try_from(upper_idx).unwrap(),
+    //                 liquidity_gross: *liq_gross_a,
+    //                 liquidity_net: -*liq_net_a, // -L
+    //             },
+    //         ];
+
+    //         // ── 풀 시뮬레이션 및 토큰 잠금량 계산 (기존 로직 그대로) ────────────────
+    //         let liquidity_active = *liq_gross_a;
+    //         let sqrt_price_x96 = {
+    //             let sqrt: U256 =
+    //                 TickMath::get_sqrt_ratio_at_tick(I24::try_from(lower_idx).unwrap())
+    //                     .map_err(|e| crate::Error::ProviderError(format!("TickMath: {e}")))?;
+    //             sqrt.to::<u128>()
+    //         };
+
+    //         let tick_data_provider =
+    //             TickListDataProvider::new(mock_ticks.clone(), I24::try_from(tick_spacing).unwrap());
+
+    //         let pool_sim = Pool::new_with_tick_data_provider(
+    //             uni_token0.clone(),
+    //             uni_token1.clone(),
+    //             FeeAmount::try_from(fee).unwrap_or(FeeAmount::MEDIUM),
+    //             U160::from(sqrt_price_x96),
+    //             liquidity_active,
+    //             tick_data_provider,
+    //         )
+    //         .map_err(|e| crate::Error::ProviderError(format!("Pool: {e}")))?;
+
+    //         // 다음 범위로 이동할 때 필요한 swap 계산 (기존 로직)
+    //         let next_sqrt_x96 = {
+    //             let sqrt: U256 = TickMath::get_sqrt_ratio_at_tick(
+    //                 I24::try_from(lower_idx - tick_spacing).unwrap(),
+    //             )
+    //             .map_err(|e| crate::Error::ProviderError(format!("TickMath: {e}")))?;
+    //             sqrt.to::<u128>()
+    //         };
+
+    //         let max_amount_token0 = CurrencyAmount::from_raw_amount(uni_token0.clone(), u128::MAX)
+    //             .map_err(|e| crate::Error::ProviderError(format!("CurrencyAmount: {e}")))?;
+
+    //         if U160::from(next_sqrt_x96) >= U160::from(sqrt_price_x96) {
+    //             continue;
+    //         }
+
+    //         let token1_amount = pool_sim
+    //             .get_output_amount(&max_amount_token0, Some(U160::from(next_sqrt_x96)))
+    //             .await
+    //             .map_err(|e| crate::Error::ProviderError(format!("get_output_amount: {e}")))?;
+
+    //         let price = tick_to_price(
+    //             uni_token0.clone(),
+    //             uni_token1.clone(),
+    //             I24::try_from(lower_idx).unwrap(),
+    //         )
+    //         .map_err(|e| crate::Error::ProviderError(format!("tick_to_price: {e}")))?;
+
+    //         let amount0_locked = match price.invert().quote(&token1_amount) {
+    //             Ok(q) => q.to_exact().parse::<f64>().unwrap_or(0.0),
+    //             Err(e) => return Err(crate::Error::ProviderError(format!("quote error: {e}"))),
+    //         };
+    //         let amount1_locked = token1_amount.to_exact().parse::<f64>().unwrap_or(0.0);
+
+    //         v3_levels.push(V3PriceLevel {
+    //             tick_idx: lower_idx,
+    //             price: price
+    //                 .to_significant(12, Some(Rounding::RoundDown))
+    //                 .unwrap_or_else(|_| "0".to_string())
+    //                 .parse::<f64>()
+    //                 .unwrap_or(0.0),
+    //             tick_price: 1.0001_f64.powi(lower_idx),
+    //             token0_liquidity: amount0_locked,
+    //             token1_liquidity: amount1_locked,
+    //             timestamp: Utc::now(),
+    //         });
+    //     }
+
+    //     // 가격 순 정렬 & 결과 반환 (기존 로직)
+    //     v3_levels.sort_by(|a, b| a.price.partial_cmp(&b.price).unwrap());
+    //     Ok(V3LiquidityDistribution {
+    //         token0: token0.clone(),
+    //         token1: token1.clone(),
+    //         dex: self.name().to_lowercase(),
+    //         chain_id: self.chain_id(),
+    //         current_tick,
+    //         price_levels: v3_levels,
+    //         timestamp: Utc::now(),
+    //     })
+    // }
 
     async fn get_all_pools_test(&self) -> Result<Vec<Pool>> {
         // This is only used for test mode in the indexer
