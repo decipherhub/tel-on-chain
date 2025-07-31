@@ -94,8 +94,8 @@ impl Indexer {
 
         if light_mode {
             info!(
-                "Starting indexer in light mode... light_mode_index_pool_count_per_dex: {}",
-                light_mode_index_pool_count_per_dex
+                "Starting indexer in light mode... light_mode_pools: {:?}",
+                LIGHT_MODE_POOLS
             );
         } else {
             info!("Starting indexer in full mode...");
@@ -115,11 +115,15 @@ impl Indexer {
                 match dex.get_all_pools_local().await {
                     Ok(pools) => {
                         info!("Found {} pools for {}", pools.len(), dex_name);
-                        let pools = if light_mode {
-                            pools
+                        let pools: Vec<Pool> = if light_mode {
+                            let light_mode_pools_addresses: Vec<Address> = LIGHT_MODE_POOLS
                                 .iter()
-                                .take(light_mode_index_pool_count_per_dex)
-                                .cloned()
+                                .map(|addr| Address::from_str(addr).unwrap())
+                                .collect();
+
+                            pools
+                                .into_iter()
+                                .filter(|p| light_mode_pools_addresses.contains(&p.address))
                                 .collect()
                         } else {
                             pools
