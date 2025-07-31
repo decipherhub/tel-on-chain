@@ -862,7 +862,6 @@ pub async fn get_current_price(
 }
 
 // TODO: consider a case where token1 is in the place of token0
-// TODO: use loop
 // TODO: aggregate with equal interval
 pub async fn aggregate_liquidity_token1(
     storage: Arc<dyn Storage>,
@@ -873,11 +872,21 @@ pub async fn aggregate_liquidity_token1(
     let Token1 = storage.get_token(token1, chain_id)?
         .ok_or(Error::InvalidAddress(token1.to_string()))?;
     let usdc_address = Address::from_str(USDC_TOKEN).unwrap();
-    //let weth_price: f64 = 1.0/get_current_price(storage.clone(), Address::from_str(WETH_TOKEN).unwrap(), usdc_address, dex, chain_id).await?;
-    let weth_price: f64 = get_current_price(storage.clone(), Address::from_str(WETH_TOKEN).unwrap(), usdc_address, dex, chain_id).await?;    
-    let wbtc_price: f64 = get_current_price(storage.clone(), Address::from_str(WBTC_TOKEN).unwrap(),usdc_address, dex, chain_id).await?;
-    let usdt_price: f64 = get_current_price(storage.clone(),  Address::from_str(USDT_TOKEN).unwrap(),usdc_address, dex, chain_id).await?;
-    let dai_price: f64 = get_current_price(storage.clone(), Address::from_str(DAI_TOKEN).unwrap(), usdc_address,dex, chain_id).await?;
+    
+    let token_constants = [WETH_TOKEN, WBTC_TOKEN, USDT_TOKEN, DAI_TOKEN];
+    let mut token_prices = Vec::new();
+    
+    for &token_str in &token_constants {
+        let price = get_current_price(
+            storage.clone(), 
+            Address::from_str(token_str).unwrap(), 
+            usdc_address, 
+            dex, 
+            chain_id
+        ).await?;
+        token_prices.push((Address::from_str(token_str).unwrap(), price));
+    }
+    
     // get token1 - WETH/USDC/DAI/USDT/WBTC pair price
     let dummy_dist = LiquidityDistribution {
         token0: Token {
@@ -900,62 +909,45 @@ pub async fn aggregate_liquidity_token1(
         price_levels: vec![],
         timestamp: Utc::now(),
     };
-    let weth_pair_distribution = match storage.get_liquidity_distribution(token1, Address::from_str(WETH_TOKEN).unwrap(),dex, chain_id)?{
-        Some(dist) => dist,
-        None => dummy_dist.clone(),
-    };
-    let usdc_pair_distribution = match storage.get_liquidity_distribution(token1, Address::from_str(USDC_TOKEN).unwrap(),dex, chain_id)?{
-        Some(dist) => dist,
-        None => dummy_dist.clone(),
-    };
-    let usdt_pair_distribution = match storage.get_liquidity_distribution(token1, Address::from_str(USDT_TOKEN).unwrap(),dex, chain_id)?{
-        Some(dist) => dist,
-        None => dummy_dist.clone(),
-    };
-    let dai_pair_distribution = match storage.get_liquidity_distribution(token1, Address::from_str(DAI_TOKEN).unwrap(),dex, chain_id)?{
-        Some(dist) => dist,
-        None => dummy_dist.clone(),
-    };
-    let wbtc_pair_distribution = match storage.get_liquidity_distribution(token1, Address::from_str(WBTC_TOKEN).unwrap(),dex, chain_id)?{
-        Some(dist) => dist,
-        None => dummy_dist.clone(),
-    };
-    let distributions = vec![
-        weth_pair_distribution,
-        usdt_pair_distribution,
-        dai_pair_distribution,
-        wbtc_pair_distribution,
+    let token_addresses = [
+        WETH_TOKEN,
+        USDC_TOKEN,
+        USDT_TOKEN,
+        DAI_TOKEN,
+        WBTC_TOKEN,
     ];
+    
+    let mut distributions = Vec::new();
+    let mut usdc_pair_distribution = dummy_dist.clone();
+    
+    for &token_addr in &token_addresses {
+        let distribution = match storage.get_liquidity_distribution(token1, Address::from_str(token_addr).unwrap(), dex, chain_id)? {
+            Some(dist) => dist,
+            None => dummy_dist.clone(),
+        };
+        
+        if token_addr == USDC_TOKEN {
+            usdc_pair_distribution = distribution;
+        } else {
+            distributions.push(distribution);
+        }
+    }
     let mut ret = usdc_pair_distribution.price_levels.clone();
-    info!("weth_price: {}", weth_price);
+    
+    if let Some((_, weth_price)) = token_prices.iter().find(|(addr, _)| *addr == Address::from_str(WETH_TOKEN).unwrap()) {
+        info!("weth_price: {}", weth_price);
+    }
+    
     for dist in distributions {
-        if dist.token1.address == Address::from_str(WETH_TOKEN).unwrap() {
-            for mut price in dist.price_levels {
-                price.lower_price = price.lower_price / weth_price;
-                price.upper_price = price.upper_price / weth_price;
-                price.token1_liquidity = price.token1_liquidity * weth_price;
-                ret.push(price);
-            }
-        } else if dist.token1.address == Address::from_str(USDT_TOKEN).unwrap() {
-            for mut price in dist.price_levels {
-                price.lower_price = price.lower_price / usdt_price;
-                price.upper_price = price.upper_price / usdt_price;
-                price.token1_liquidity = price.token1_liquidity * usdt_price;
-                ret.push(price);
-            }
-        } else if dist.token1.address == Address::from_str(DAI_TOKEN).unwrap() {
-            for mut price in dist.price_levels {
-                price.lower_price = price.lower_price / dai_price;
-                price.upper_price = price.upper_price / dai_price;
-                price.token1_liquidity = price.token1_liquidity * dai_price;
-                ret.push(price);
-            }
-        } else if dist.token1.address == Address::from_str(WBTC_TOKEN).unwrap(){
-            for mut price in dist.price_levels {
-                price.lower_price = price.lower_price / wbtc_price;
-                price.upper_price = price.upper_price / wbtc_price;
-                price.token1_liquidity = price.token1_liquidity * wbtc_price;
-                ret.push(price);
+        for (token_address, price) in token_prices.iter() {
+            if dist.token1.address == *token_address {
+                for mut price_level in dist.price_levels {
+                    price_level.lower_price = price_level.lower_price / price;
+                    price_level.upper_price = price_level.upper_price / price;
+                    price_level.token1_liquidity = price_level.token1_liquidity * price;
+                    ret.push(price_level);
+                }
+                break;
             }
         }
     }
