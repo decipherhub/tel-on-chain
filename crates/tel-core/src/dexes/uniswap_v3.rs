@@ -443,6 +443,7 @@ impl DexProtocol for UniswapV3 {
         Ok(0.0)
     }
 
+    /// Return per-tick liquidity distribution identical to Uniswap-Interface chart.
     async fn get_v3_liquidity_distribution(
         &self,
         pool_address: Address,
@@ -450,7 +451,7 @@ impl DexProtocol for UniswapV3 {
         use uniswap_v3_sdk::prelude::*;
         use uniswap_v3_sdk::utils::price_tick_conversions::tick_to_price;
 
-        // ── ① 온체인 상태 ──────────────────────────────────────────────────────────
+        /* ── ① 온체인 상태 ─────────────────────────────────────────────── */
         let pool = self.get_pool(pool_address).await?;
         let token0 = &pool.tokens[0];
         let token1 = &pool.tokens[1];
@@ -477,17 +478,13 @@ impl DexProtocol for UniswapV3 {
             .try_into()
             .unwrap_or(0);
         let fee = pool.fee as u32;
-        let sqrt_price_x96_cur: u128 = slot0.sqrtPriceX96.to::<u128>();
+        let sqrt_p_cur = slot0.sqrtPriceX96.to::<u128>();
 
         tracing::debug!(
-            "INIT: current_tick={}, tick_spacing={}, current_liq={}, sqrt_cur={}",
-            current_tick,
-            tick_spacing,
-            current_liq,
-            sqrt_price_x96_cur
+            "INIT cur_tick={current_tick} spacing={tick_spacing} L={current_liq} √P={sqrt_p_cur}"
         );
 
-        // ── ② 활성 틱 + active range 보강 ──────────────────────────────────────────
+        /* ── ② 활성 틱 + active-range 보강 ──────────────────────────────── */
         let (_, mut ticks) = self.get_active_ticks(pool_address).await?;
         if ticks.is_empty() {
             return Ok(Self::empty_v3_dist(
@@ -505,7 +502,7 @@ impl DexProtocol for UniswapV3 {
             ticks.sort_by_key(|(t, _, _)| *t);
         }
 
-        // ── ③ Token 래퍼 ───────────────────────────────────────────────────────────
+        /* ── ③ SDK Token 래퍼 ──────────────────────────────────────────── */
         let uni_t0 = uniswap_sdk_core::prelude::Token::new(
             DexProtocol::chain_id(self),
             token0.address,
@@ -525,6 +522,7 @@ impl DexProtocol for UniswapV3 {
             0,
         );
 
+        /* ── helper : build_level ──────────────────────────────────────── */
         #[allow(clippy::too_many_arguments)]
         async fn build_level(
             uni_t0: &uniswap_sdk_core::prelude::Token,
@@ -535,95 +533,86 @@ impl DexProtocol for UniswapV3 {
             liq_active: u128,
             liq_gross: u128,
             liq_net: i128,
-            sqrt_price_x96_cur: u128,
-            current_tick: i32,
+            sqrt_p_cur: u128,
+            cur_tick: i32,
         ) -> std::result::Result<V3PriceLevel, TelError> {
             use uniswap_v3_sdk::prelude::*;
             use uniswap_v3_sdk::utils::price_tick_conversions::tick_to_price;
 
-            let lower_idx = tick_idx;
-            let upper_idx = lower_idx + tick_spacing;
+            /* ① 경계 tick & √P */
+            let lower = tick_idx;
+            let upper = lower + tick_spacing;
 
-            // ── √P 경계 ──────────────────────────────────────────────────────
             let bot_sqrt: u128 = {
-                let t = I24::try_from(lower_idx)
-                    .map_err(|e| TelError::ProviderError(format!("I24 conv: {e}")))?;
-                let sqrt: U256 = TickMath::get_sqrt_ratio_at_tick(t)
-                    .map_err(|e| TelError::ProviderError(format!("TickMath: {e}")))?;
+                let sqrt: U256 = TickMath::get_sqrt_ratio_at_tick(
+                    I24::try_from(lower)
+                        .map_err(|e| TelError::ProviderError(format!("I24 conv: {e}")))?,
+                )
+                .map_err(|e| TelError::ProviderError(format!("TickMath: {e}")))?;
                 sqrt.to::<u128>()
             };
             let top_sqrt: u128 = {
-                let t = I24::try_from(upper_idx)
-                    .map_err(|e| TelError::ProviderError(format!("I24 conv: {e}")))?;
-                let sqrt: U256 = TickMath::get_sqrt_ratio_at_tick(t)
-                    .map_err(|e| TelError::ProviderError(format!("TickMath: {e}")))?;
+                let sqrt: U256 = TickMath::get_sqrt_ratio_at_tick(
+                    I24::try_from(upper)
+                        .map_err(|e| TelError::ProviderError(format!("I24 conv: {e}")))?,
+                )
+                .map_err(|e| TelError::ProviderError(format!("TickMath: {e}")))?;
                 sqrt.to::<u128>()
             };
 
-            // ── 위치 판정 ────────────────────────────────────────────────────
-            let is_current = lower_idx <= current_tick && current_tick < upper_idx;
-            let above_cur = lower_idx >= current_tick; // 다음 틱 이후
-            let below_cur = upper_idx <= current_tick; // 이전 틱 이하
+            /* ② 위치 판정 */
+            let is_current = lower <= cur_tick && cur_tick < upper;
+            let above_cur = lower >= cur_tick;
+            let below_cur = upper <= cur_tick;
 
-            // ── mock ticks & provider ───────────────────────────────────────
-            let ticks = vec![
-                Tick {
-                    index: I24::try_from(lower_idx)
-                        .map_err(|e| TelError::ProviderError(format!("I24 conv: {e}")))?,
-                    liquidity_gross: liq_gross,
-                    liquidity_net: liq_net,
-                },
-                Tick {
-                    index: I24::try_from(upper_idx)
-                        .map_err(|e| TelError::ProviderError(format!("I24 conv: {e}")))?,
-                    liquidity_gross: liq_gross,
-                    liquidity_net: -liq_net,
-                },
-            ];
+            /* ③ mock provider */
             let provider = TickListDataProvider::new(
-                ticks,
+                vec![
+                    Tick {
+                        index: I24::try_from(lower)
+                            .map_err(|e| TelError::ProviderError(format!("I24 conv: {e}")))?,
+                        liquidity_gross: liq_gross,
+                        liquidity_net: liq_net,
+                    },
+                    Tick {
+                        index: I24::try_from(upper)
+                            .map_err(|e| TelError::ProviderError(format!("I24 conv: {e}")))?,
+                        liquidity_gross: liq_gross,
+                        liquidity_net: -liq_net,
+                    },
+                ],
                 I24::try_from(tick_spacing)
                     .map_err(|e| TelError::ProviderError(format!("I24 conv: {e}")))?,
             );
 
-            // 가격 객체 (P_lower 기준)
-            let price = tick_to_price(
+            /* ④ 가격( P_lower ) */
+            let price_lower = tick_to_price(
                 uni_t0.clone(),
                 uni_t1.clone(),
-                I24::try_from(lower_idx)
+                I24::try_from(lower)
                     .map_err(|e| TelError::ProviderError(format!("I24 conv: {e}")))?,
             )
             .map_err(|e| TelError::ProviderError(format!("tick_to_price: {e}")))?;
 
-            // =============== 1. token1 → token0 (가격 ↑, zero_for_one = false) ===========
+            /* ⑤ token1_needed : token1 → token0 (가격 상승) */
             let token1_needed = if above_cur || is_current {
-                // 시작 √P : 현재 구간이면 현재, 위쪽 구간이면 bot_sqrt
-                let start = if is_current {
-                    sqrt_price_x96_cur
-                } else {
-                    bot_sqrt
-                };
-
+                let start_up = if is_current { sqrt_p_cur } else { bot_sqrt };
                 let pool_up = Pool::new_with_tick_data_provider(
                     uni_t0.clone(),
                     uni_t1.clone(),
                     FeeAmount::try_from(fee).unwrap_or(FeeAmount::MEDIUM),
-                    U160::from(start), // √P_start  (<= current)
+                    U160::from(start_up),
                     liq_active,
                     provider.clone(),
                 )
                 .map_err(|e| TelError::ProviderError(format!("Pool: {e}")))?;
-
                 let max_t1 = CurrencyAmount::from_raw_amount(uni_t1.clone(), u128::MAX)
                     .map_err(|e| TelError::ProviderError(format!("CurrencyAmount: {e}")))?;
-
-                // limit = top_sqrt  (> start)  → assert OK
                 let t0_out = pool_up
                     .get_output_amount(&max_t1, Some(U160::from(top_sqrt)))
                     .await
                     .map_err(|e| TelError::ProviderError(format!("get_output_amount: {e}")))?;
-
-                price
+                price_lower
                     .quote(&t0_out)
                     .map_err(|e| TelError::ProviderError(format!("quote: {e}")))?
                     .to_exact()
@@ -633,35 +622,25 @@ impl DexProtocol for UniswapV3 {
                 0.0
             };
 
-            // =============== 2. token0 → token1 (가격 ↓, zero_for_one = true) ============
+            /* ⑥ token0_needed : token0 → token1 (가격 하락) */
             let token0_needed = if below_cur || is_current {
-                // 시작 √P : 현재 구간이면 현재, 아래쪽 구간이면 top_sqrt
-                let start = if is_current {
-                    sqrt_price_x96_cur
-                } else {
-                    top_sqrt
-                };
-
+                let start_dn = if is_current { sqrt_p_cur } else { top_sqrt };
                 let pool_dn = Pool::new_with_tick_data_provider(
                     uni_t0.clone(),
                     uni_t1.clone(),
                     FeeAmount::try_from(fee).unwrap_or(FeeAmount::MEDIUM),
-                    U160::from(start), // √P_start  (>= current)
+                    U160::from(start_dn),
                     liq_active,
                     provider,
                 )
                 .map_err(|e| TelError::ProviderError(format!("Pool: {e}")))?;
-
                 let max_t0 = CurrencyAmount::from_raw_amount(uni_t0.clone(), u128::MAX)
                     .map_err(|e| TelError::ProviderError(format!("CurrencyAmount: {e}")))?;
-
-                // limit = bot_sqrt (< start) → assert OK
                 let t1_out = pool_dn
                     .get_output_amount(&max_t0, Some(U160::from(bot_sqrt)))
                     .await
                     .map_err(|e| TelError::ProviderError(format!("get_output_amount: {e}")))?;
-
-                price
+                price_lower
                     .invert()
                     .quote(&t1_out)
                     .map_err(|e| TelError::ProviderError(format!("quote: {e}")))?
@@ -672,69 +651,73 @@ impl DexProtocol for UniswapV3 {
                 0.0
             };
 
-            // ── 최종 레벨 ─────────────────────────────────────────────────────────────
+            /* ⑦ 레벨 객체 (필드 스왑) */
             Ok(V3PriceLevel {
-                tick_idx: lower_idx,
-                price: price
+                tick_idx: lower,
+                price: price_lower
                     .to_significant(12, Some(Rounding::RoundDown))
                     .map_err(|e| TelError::ProviderError(format!("to_significant: {e}")))?
                     .parse::<f64>()
                     .unwrap_or(0.0),
-                tick_price: 1.0001_f64.powi(lower_idx),
-
-                // 🔄  여기를 교체  🔄
-                token0_liquidity: token1_needed, // 위쪽 구간  : token0 을 얼마나 빼야 ↑ 이동?
-                token1_liquidity: token0_needed, // 아래쪽 구간: token1 을 얼마나 빼야 ↓ 이동?
-
+                tick_price: 1.0001_f64.powi(lower),
+                token0_liquidity: token1_needed, // ↑ bar
+                token1_liquidity: token0_needed, // ↓ bar
                 timestamp: chrono::Utc::now(),
             })
         }
 
-        // ── ④ 레벨 누적 ────────────────────────────────────────────────────────────
+        /* ── ④ 레벨 생성 루프 ───────────────────────────────────────────── */
         let mut levels = Vec::<V3PriceLevel>::with_capacity(ticks.len());
         let mut running_liq = current_liq as i128;
 
-        // 위쪽
         for (idx, gross, net) in ticks.iter().filter(|(t, _, _)| *t >= current_tick) {
-            let lvl = build_level(
-                &uni_t0,
-                &uni_t1,
-                fee,
-                *idx,
-                tick_spacing,
-                running_liq.max(0) as u128,
-                *gross,
-                *net,
-                sqrt_price_x96_cur,
-                current_tick,
-            )
-            .await?;
-            levels.push(lvl);
+            levels.push(
+                build_level(
+                    &uni_t0,
+                    &uni_t1,
+                    fee,
+                    *idx,
+                    tick_spacing,
+                    running_liq.max(0) as u128,
+                    *gross,
+                    *net,
+                    sqrt_p_cur,
+                    current_tick,
+                )
+                .await?,
+            );
             running_liq += *net as i128;
         }
 
-        // 아래쪽
         running_liq = current_liq as i128;
         for (idx, gross, net) in ticks.iter().rev().filter(|(t, _, _)| *t < current_tick) {
             running_liq -= *net as i128;
-            let lvl = build_level(
-                &uni_t0,
-                &uni_t1,
-                fee,
-                *idx,
-                tick_spacing,
-                running_liq.max(0) as u128,
-                *gross,
-                *net,
-                sqrt_price_x96_cur,
-                current_tick,
-            )
-            .await?;
-            levels.push(lvl);
+            levels.push(
+                build_level(
+                    &uni_t0,
+                    &uni_t1,
+                    fee,
+                    *idx,
+                    tick_spacing,
+                    running_liq.max(0) as u128,
+                    *gross,
+                    *net,
+                    sqrt_p_cur,
+                    current_tick,
+                )
+                .await?,
+            );
         }
 
-        // ── ⑤ 결과 정렬·반환 ───────────────────────────────────────────────────────
+        /* ── ⑤ 정렬 → offset(shift) ────────────────────────────────────── */
         levels.sort_by(|a, b| a.price.partial_cmp(&b.price).unwrap());
+
+        for i in 1..levels.len() {
+            levels[i - 1].token0_liquidity = levels[i].token0_liquidity;
+            levels[i - 1].token1_liquidity = levels[i].token1_liquidity;
+        }
+
+        /* ── ⑥ 반환 ────────────────────────────────────────────────────── */
         Ok(V3LiquidityDistribution {
             token0: token0.clone(),
             token1: token1.clone(),
@@ -742,7 +725,7 @@ impl DexProtocol for UniswapV3 {
             chain_id: DexProtocol::chain_id(self),
             current_tick,
             price_levels: levels,
-            timestamp: Utc::now(),
+            timestamp: chrono::Utc::now(),
         })
     }
 
