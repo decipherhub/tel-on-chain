@@ -4,7 +4,6 @@ use tel_core::models::{LiquidityDistribution, LiquidityWallsResponse, LiquidityW
 use tel_core::providers::ProviderManager;
 use tel_core::storage::{aggregate_liquidity_token1, Storage};
 use tel_core::storage::SqliteStorage;
-use tel_core::dexes::DexProtocol;
 use alloy_primitives::{Address, hex};
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
