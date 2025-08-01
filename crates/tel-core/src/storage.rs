@@ -1,6 +1,6 @@
 use crate::error::Error;
 use crate::models::{LiquidityDistribution, Pool, PriceLiquidity, Token};
-use crate::utils::{merge_synthetic_liquidity_distributions, merge_two_liquidity_distributions};
+use crate::utils::{merge_synthetic_liquidity_distributions, merge_two_liquidity_distributions, bucket_price_levels};
 use crate::Result;
 use alloy_primitives::Address;
 use chrono::{DateTime, NaiveDateTime, Utc};
@@ -17,6 +17,7 @@ const USDC_TOKEN: &str = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const DAI_TOKEN: &str = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
 const USDT_TOKEN: &str = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
 const WBTC_TOKEN: &str = "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599";
+const DEXES: [&str; 3] = ["uniswap_v2", "uniswap_v3", "sushiswap"];
 
 #[async_trait::async_trait]
 pub trait Storage: Send + Sync {
@@ -482,9 +483,6 @@ impl Storage for SqliteStorage {
     fn get_all_pools_paginated(&self, chain_id: u64, limit: u64, offset: u64) -> Result<Vec<Pool>> {
         let conn = self.conn.lock().unwrap();
         
-        // Get pools from all supported DEXes with pagination
-        let dexes = ["uniswap_v3", "uniswap_v2", "sushiswap"];
-        
         let mut stmt = conn
             .prepare("SELECT p.address, p.chain_id, p.dex, p.token0_address, p.token1_address, p.fee,
                             t0.symbol as token0_symbol, t0.name as token0_name, t0.decimals as token0_decimals,
@@ -866,7 +864,7 @@ pub async fn get_current_price(
 pub async fn aggregate_liquidity_token1(
     storage: Arc<dyn Storage>,
     token1: Address,
-    dex : &str,
+    dex_for_price_reference : &str,
     chain_id: u64,
 ) -> Result<LiquidityDistribution>{
     let Token1 = storage.get_token(token1, chain_id)?
@@ -881,7 +879,7 @@ pub async fn aggregate_liquidity_token1(
             storage.clone(), 
             Address::from_str(token_str).unwrap(), 
             usdc_address, 
-            dex, 
+            dex_for_price_reference, 
             chain_id
         ).await?;
         token_prices.push((Address::from_str(token_str).unwrap(), price));
@@ -904,12 +902,12 @@ pub async fn aggregate_liquidity_token1(
             chain_id: chain_id,
         },
         current_price: 0.0,
-        dex: dex.to_string(),
+        dex: dex_for_price_reference.to_string(),
         chain_id: chain_id,
         price_levels: vec![],
         timestamp: Utc::now(),
     };
-    let token_addresses = [
+    let paired_token_addresses = [
         WETH_TOKEN,
         USDC_TOKEN,
         USDT_TOKEN,
@@ -920,8 +918,11 @@ pub async fn aggregate_liquidity_token1(
     let mut distributions = Vec::new();
     let mut usdc_pair_distribution = dummy_dist.clone();
     
-    for &token_addr in &token_addresses {
-        let distribution = match storage.get_liquidity_distribution(token1, Address::from_str(token_addr).unwrap(), dex, chain_id)? {
+    for &token_addr in &paired_token_addresses {
+        // TODO: conduct this for all DEXes
+        let distribution = match storage.get_liquidity_distribution(
+            token1, Address::from_str(token_addr).unwrap(), dex_for_price_reference, chain_id
+        )? {
             Some(dist) => dist,
             None => dummy_dist.clone(),
         };
@@ -930,7 +931,7 @@ pub async fn aggregate_liquidity_token1(
             usdc_pair_distribution = distribution;
         } else {
             distributions.push(distribution);
-        }
+        }        
     }
     let mut ret = usdc_pair_distribution.price_levels.clone();
     
@@ -951,8 +952,20 @@ pub async fn aggregate_liquidity_token1(
             }
         }
     }
+    // bucket price levels, sort price levels by lower price
+    let bucket_size = 0.001;
+    ret.sort_by(|a, b| a.lower_price.partial_cmp(&b.lower_price).unwrap());
+    let mut bucketed_ret = Vec::new();
+    for price_level in ret {
+        let bucket_index = (price_level.lower_price / bucket_size).floor() as i32;
+        bucketed_ret.push(PriceLiquidity {
+            ..price_level
+        });
+    }
+    ret = bucketed_ret;
+
     let mut aggregate_pool = usdc_pair_distribution.clone();
-    aggregate_pool.price_levels = ret;
+    aggregate_pool.price_levels = bucket_price_levels(ret, aggregate_pool.current_price, 0.001);
     let token1_name = Token1.name.clone();
     let token1_name = token1_name + "'s Aggregate Liquidity";
     aggregate_pool.token0 = Token {

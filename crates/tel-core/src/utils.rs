@@ -110,6 +110,38 @@ pub fn merge_two_liquidity_distributions(
     })
 }
 
+/// Buckets price levels into uniform intervals
+pub fn bucket_price_levels(price_levels: Vec<PriceLiquidity>, current_price: f64, bucket_size: f64) -> Vec<PriceLiquidity> {
+    use std::collections::HashMap;
+    
+    let mut buckets: HashMap<i32, PriceLiquidity> = HashMap::new();
+    
+    for level in price_levels {
+        let mid_price = (level.lower_price + level.upper_price) / 2.0;
+        let bucket_index = ((mid_price / current_price - 1.0) / bucket_size).round() as i32;
+        
+        let bucket_center = current_price * (1.0 + bucket_index as f64 * bucket_size);
+        let bucket_lower = bucket_center * (1.0 - bucket_size / 2.0);
+        let bucket_upper = bucket_center * (1.0 + bucket_size / 2.0);
+        
+        buckets.entry(bucket_index)
+            .and_modify(|existing| {
+                existing.token0_liquidity += level.token0_liquidity;
+                existing.token1_liquidity += level.token1_liquidity;
+            })
+            .or_insert(PriceLiquidity {
+                side: level.side,
+                lower_price: bucket_lower,
+                upper_price: bucket_upper,
+                token0_liquidity: level.token0_liquidity,
+                token1_liquidity: level.token1_liquidity,
+                timestamp: level.timestamp,
+            });
+    }
+    
+    buckets.into_values().collect()
+}
+
 /// Creates a synthetic liquidity distribution for an A-C pair from A-B and B-C pairs.
 ///
 /// # Arguments
