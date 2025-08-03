@@ -2,7 +2,7 @@ use tel_core::config::Config;
 use tel_core::error::Error;
 use tel_core::models::{LiquidityDistribution, LiquidityWallsResponse, LiquidityWall, Side, Token, Pool};
 use tel_core::providers::ProviderManager;
-use tel_core::storage::{aggregate_liquidity_token1, Storage};
+use tel_core::storage::{aggregate_liquidity_token1, aggregate_liquidity_dexes, Storage};
 use tel_core::storage::SqliteStorage;
 use alloy_primitives::{Address, hex};
 use axum::extract::{Path, Query, State};
@@ -338,10 +338,9 @@ pub async fn get_token_aggregate_liquidity(
             code: 400,
         })?;
 
-    let dist = aggregate_liquidity_token1(
+    let dist = aggregate_liquidity_dexes(
         state.storage.clone(),
         token1_address,
-        "uniswap_v3",
         chain_id,
     )
     .await
