@@ -18,6 +18,7 @@ const DAI_TOKEN: &str = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
 const USDT_TOKEN: &str = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
 const WBTC_TOKEN: &str = "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599";
 const DEXES: [&str; 2] = ["uniswap_v2", "uniswap_v3"];
+//const DEXES: [&str; 1] = ["uniswap_v3"];
 
 #[async_trait::async_trait]
 pub trait Storage: Send + Sync {

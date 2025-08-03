@@ -92,18 +92,7 @@ impl UniswapV2 {
         Ok(token)
     }
 
-    /// Retrieves the reserves and last update timestamp for a given pool address.
-    ///
-    /// This simplified placeholder returns zero values for reserves and timestamp.
-    /// In production, this would query the pool contract for actual reserve data.
-    ///
-    /// # Arguments
-    ///
-    /// * `_pool_address` - The address of the liquidity pool to query.
-    ///
-    /// # Returns
-    ///
-    /// A tuple containing the reserves of token0, token1, and the last update timestamp.
+
     async fn get_reserves(&self, _pool_address: Address) -> Result<(u128, u128, u32), Error> {
         // This is a placeholder, in production we'd actually call the contract
         // Simplified for compatibility
@@ -125,16 +114,46 @@ impl UniswapV2 {
         Ok((reserve0, reserve1, last_updated_timestamp))
     }
 
-    /// Builds a visual representation of liquidity for a Uniswap V2 pool,
-    /// assuming uniform distribution across price buckets.
-    /// The total representative liquidity is divided equally among all buckets.
-    ///
-    /// # Arguments
-    /// * `reserves_float` - A tuple of (reserve0, reserve1) with decimals already applied.
-    /// * `current_price` - The current price of token0 in terms of token1.
-    ///
-    /// # Returns
-    /// A vector of `PriceLiquidity` representing flat, correctly-scaled liquidity buckets.
+    fn build_cumulative_price_levels(
+        reserves: (u128, u128),
+    ) -> Vec<PriceLiquidity> {
+        let current_price = reserves.1 as f64 / reserves.0 as f64;
+    
+        (-50..=100)
+            .map(|i| {
+                let factor   = 1.0 + i as f64 / 100.0;
+                let sqrt_f   = factor.sqrt();
+    
+                // price up (f > 1) : token0 is sold and removed from pool
+                // price down (f < 1) : token1 is sold and removed from pool
+                let (liq0, liq1) = if factor >= 1.0 {
+                    (
+                        reserves.0 as f64 * (1.0 - 1.0 / sqrt_f),
+                        0.0,
+                    )
+                } else {
+                    (
+                        0.0,
+                        reserves.1 as f64 * (1.0 - sqrt_f),
+                    )
+                };
+    
+                PriceLiquidity {
+                    side: if factor >= 1.0 { Side::Sell } else { Side::Buy },
+                    lower_price: current_price * factor,
+                    upper_price: current_price * factor,
+                    token0_liquidity: liq0,
+                    token1_liquidity: liq1,
+                    timestamp: Utc::now(),
+                }
+            })
+            .collect()
+    }
+
+
+    // Builds a visual representation of liquidity for a Uniswap V2 pool,
+    // assuming uniform distribution across price buckets.
+    // The total representative liquidity is divided equally among all buckets.
     fn build_uniform_liquidity_levels(
         reserves_float: (f64, f64),
         current_price: f64,
@@ -206,24 +225,6 @@ impl DexProtocol for UniswapV2 {
         self.storage.clone()
     }
 
-    /// Retrieves information about a specific Uniswap V2 pool by its address.
-    ///
-    /// Fetches pool and token metadata from the blockchain and saves it to storage.
-    ///
-    /// # Arguments
-    ///
-    /// * `pool_address` - The address of the Uniswap V2 pool to retrieve.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing the `Pool` object, or an error if retrieval fails.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let pool = uniswap_v2.get_pool(Address::from_low_u64_be(0x1234)).await?;
-    /// assert_eq!(pool.address, Address::from_low_u64_be(0x1234));
-    /// ```
     async fn get_pool(&self, pool_address: Address) -> Result<Pool, Error> {
         let inner = self.provider.provider();
         let pair = IUniswapV2Pair::new(pool_address, inner.clone());
@@ -259,22 +260,7 @@ impl DexProtocol for UniswapV2 {
         Ok(pool)
     }
 
-    /// Retrieves up to 10 Uniswap V2 pools from the factory contract and saves them to storage.
-    ///
-    /// Queries the Uniswap V2 factory contract for the total number of pairs, fetches up to 10 pool addresses and their associated token addresses, constructs pool objects with token stubs, saves each pool asynchronously to storage, and returns the list of pools.
-    ///
-    /// # Returns
-    /// A vector of `Pool` objects representing the discovered Uniswap V2 pools.
-    ///
-    /// # Errors
-    /// Returns an error if any on-chain contract call fails or if saving a pool to storage fails.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let pools = uniswap_v2.get_all_pools().await?;
-    /// assert!(!pools.is_empty());
-    /// ```
+    
     async fn get_all_pools(&self) -> Result<Vec<Pool>, Error> {
         // 1. Alloy Provider (RootProvider<Ethereum>)
         let inner = self.provider.provider();
@@ -342,26 +328,7 @@ impl DexProtocol for UniswapV2 {
         Ok(pools)
     }
 
-    /// Retrieves the current liquidity distribution and price for a given Uniswap V2 pool.
-    ///
-    /// Calculates the price and available liquidity for both tokens in the specified pool,
-    /// returning a `LiquidityDistribution` with a single price point representing the current state.
-    ///
-    /// # Parameters
-    /// - `pool_address`: The address of the Uniswap V2 pool to query.
-    ///
-    /// # Returns
-    /// A `LiquidityDistribution` containing token information, DEX name, chain ID, price levels, and timestamp.
-    ///
-    /// # Errors
-    /// Returns an error if the pool or reserves cannot be retrieved.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let distribution = uniswap_v2.get_liquidity_distribution(pool_address).await?;
-    /// println!("Current price: {}", distribution.price_levels[0].price);
-    /// ```
+    
     async fn get_liquidity_distribution(
         &self,
         pool_address: Address,
