@@ -125,36 +125,58 @@ impl UniswapV2 {
         Ok((reserve0, reserve1, last_updated_timestamp))
     }
 
-    fn build_cumulative_price_levels(
-        reserves: (u128, u128),
+    /// Builds a visual representation of liquidity for a Uniswap V2 pool,
+    /// assuming uniform distribution across price buckets.
+    /// The total representative liquidity is divided equally among all buckets.
+    ///
+    /// # Arguments
+    /// * `reserves_float` - A tuple of (reserve0, reserve1) with decimals already applied.
+    /// * `current_price` - The current price of token0 in terms of token1.
+    ///
+    /// # Returns
+    /// A vector of `PriceLiquidity` representing flat, correctly-scaled liquidity buckets.
+    fn build_uniform_liquidity_levels(
+        reserves_float: (f64, f64),
+        current_price: f64,
     ) -> Vec<PriceLiquidity> {
-        let current_price = reserves.1 as f64 / reserves.0 as f64;
-    
-        (-50..=100)
+        if reserves_float.0 <= 0.0 || reserves_float.1 <= 0.0 {
+            return vec![];
+        }
+
+        // 1. Calculate the total representative liquidity (L = sqrt(x*y)).
+        let total_representative_liquidity = (reserves_float.0 * reserves_float.1).sqrt();
+
+        // 2. Define the price range and count the number of buckets.
+        let price_range = -50..=50;
+        let num_buckets = price_range.clone().count() as f64;
+        if num_buckets == 0.0 {
+            return vec![];
+        }
+
+        // 3. Divide the total liquidity by the number of buckets to get per-bucket liquidity.
+        let liquidity_per_bucket = total_representative_liquidity / num_buckets;
+
+        // 4. Create the price buckets with the correctly scaled liquidity.
+        price_range
             .map(|i| {
-                let factor   = 1.0 + i as f64 / 100.0;
-                let sqrt_f   = factor.sqrt();
-    
-                // price up (f > 1) : token0 is sold and removed from pool
-                // price down (f < 1) : token1 is sold and removed from pool
-                let (liq0, liq1) = if factor >= 1.0 {
-                    (
-                        reserves.0 as f64 * (1.0 - 1.0 / sqrt_f),
-                        0.0,
-                    )
+                let price_ratio = 1.0 + (i as f64 / 100.0);
+                let price_level = current_price * price_ratio;
+
+                let (token0_liq, token1_liq, side) = if i < 0 {
+                    (0.0, liquidity_per_bucket, Side::Buy)
+                } else if i > 0 {
+                    (liquidity_per_bucket, 0.0, Side::Sell)
                 } else {
-                    (
-                        0.0,
-                        reserves.1 as f64 * (1.0 - sqrt_f),
-                    )
+                    // At the current price, show half on each side.
+                    (liquidity_per_bucket / 2.0, liquidity_per_bucket / 2.0, Side::Sell)
                 };
-    
+
                 PriceLiquidity {
-                    side: if factor >= 1.0 { Side::Sell } else { Side::Buy },
-                    lower_price: current_price * factor,
-                    upper_price: current_price * factor,
-                    token0_liquidity: liq0,
-                    token1_liquidity: liq1,
+                    side,
+                    lower_price: price_level,
+                    upper_price: price_level,
+                    token0_liquidity: token0_liq,
+                    token1_liquidity: token1_liq,
                     timestamp: Utc::now(),
                 }
             })
@@ -361,18 +383,7 @@ impl DexProtocol for UniswapV2 {
             0.0
         };
 
-        let price_levels = Self::build_cumulative_price_levels((reserve0, reserve1));
-        let per_tick_levels: Vec<PriceLiquidity> = price_levels
-            .windows(2)
-            .map(|w| PriceLiquidity {
-                side: w[0].side,
-                lower_price: w[0].upper_price,
-                upper_price: w[1].upper_price,
-                token0_liquidity:  (w[1].token0_liquidity - w[0].token0_liquidity).abs(),
-                token1_liquidity:  (w[1].token1_liquidity - w[0].token1_liquidity).abs(),
-                timestamp:         Utc::now(),
-            })
-            .collect();
+        let price_levels = Self::build_uniform_liquidity_levels((reserve0_float, reserve1_float), current_price);
 
         let distribution = LiquidityDistribution {
             current_price: current_price,
@@ -380,7 +391,7 @@ impl DexProtocol for UniswapV2 {
             token1: token1.clone(),
             dex: self.name().to_string(),
             chain_id: self.chain_id(),
-            price_levels: per_tick_levels,
+            price_levels: price_levels, // Use the new levels directly
             timestamp: Utc::now(),
         };
         save_liquidity_distribution_async(self.storage.clone(), distribution.clone()).await?;
