@@ -11,6 +11,7 @@ use alloy_sol_types::sol;
 use async_trait::async_trait;
 use chrono::Utc;
 use std::sync::Arc;
+use std::str::FromStr;
 
 sol! {
     // ── Uniswap V2 Factory ───────────────────────────────────────────
@@ -126,29 +127,23 @@ impl UniswapV2 {
     }
 
     fn build_cumulative_price_levels(
-        reserves: (u128, u128),
+        reserves: (f64, f64),
     ) -> Vec<PriceLiquidity> {
-        let current_price = reserves.1 as f64 / reserves.0 as f64;
-    
+        let current_price = if reserves.0 > 0.0 { reserves.1 / reserves.0 } else { 0.0 };
+
         (-50..=100)
             .map(|i| {
-                let factor   = 1.0 + i as f64 / 100.0;
-                let sqrt_f   = factor.sqrt();
-    
+                let factor = 1.0 + i as f64 / 100.0;
+                let sqrt_f = factor.sqrt();
+
                 // price up (f > 1) : token0 is sold and removed from pool
                 // price down (f < 1) : token1 is sold and removed from pool
                 let (liq0, liq1) = if factor >= 1.0 {
-                    (
-                        reserves.0 as f64 * (1.0 - 1.0 / sqrt_f),
-                        0.0,
-                    )
+                    (reserves.0 * (1.0 - 1.0 / sqrt_f), 0.0)
                 } else {
-                    (
-                        0.0,
-                        reserves.1 as f64 * (1.0 - sqrt_f),
-                    )
+                    (0.0, reserves.1 * (1.0 - sqrt_f))
                 };
-    
+
                 PriceLiquidity {
                     side: if factor >= 1.0 { Side::Sell } else { Side::Buy },
                     lower_price: current_price * factor,
@@ -160,6 +155,8 @@ impl UniswapV2 {
             })
             .collect()
     }
+
+    
 }
 
 #[async_trait]
@@ -350,9 +347,14 @@ impl DexProtocol for UniswapV2 {
         let token0 = &pool.tokens[0];
         let token1 = &pool.tokens[1];
 
-        // Convert reserves to float for price calculation
-        let reserve0_float = reserve0 as f64 / 10f64.powi(token0.decimals as i32);
-        let reserve1_float = reserve1 as f64 / 10f64.powi(token1.decimals as i32);
+        // Convert reserves to float for price calculation, avoiding precision loss by using strings.
+        let reserve0_str = reserve0.to_string();
+        let reserve1_str = reserve1.to_string();
+        let reserve0_f64 = reserve0_str.parse::<f64>().unwrap_or(0.0);
+        let reserve1_f64 = reserve1_str.parse::<f64>().unwrap_or(0.0);
+
+        let reserve0_float = reserve0_f64 / 10f64.powi(token0.decimals as i32);
+        let reserve1_float = reserve1_f64 / 10f64.powi(token1.decimals as i32);
 
         // Calculate price (token1/token0)
         let current_price = if reserve0_float > 0.0 {
@@ -361,7 +363,7 @@ impl DexProtocol for UniswapV2 {
             0.0
         };
 
-        let price_levels = Self::build_cumulative_price_levels((reserve0, reserve1));
+        let price_levels = Self::build_cumulative_price_levels((reserve0_float, reserve1_float));
         let per_tick_levels: Vec<PriceLiquidity> = price_levels
             .windows(2)
             .map(|w| PriceLiquidity {
