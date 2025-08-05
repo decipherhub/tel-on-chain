@@ -2,7 +2,7 @@ use tel_core::config::Config;
 use tel_core::error::Error;
 use tel_core::models::{LiquidityDistribution, LiquidityWallsResponse, LiquidityWall, Side, Token, Pool};
 use tel_core::providers::ProviderManager;
-use tel_core::storage::Storage;
+use tel_core::storage::{aggregate_liquidity_token1, aggregate_liquidity_dexes, Storage};
 use tel_core::storage::SqliteStorage;
 use alloy_primitives::{Address, hex};
 use axum::extract::{Path, Query, State};
@@ -133,6 +133,10 @@ fn routes(state: Arc<AppState>) -> Router {
         .route("/v1/tokens/:chain_id/:address", get(get_token_info))
         .route("/v1/pools/:dex/:chain_id", get(get_pools_by_dex))
         .route("/v1/chains/:chain_id/pools", get(get_all_pools))
+        .route(
+            "/v1/tokens/:token1_addr/aggregate/:dex/:chain_id",
+            get(get_token_aggregate_liquidity),
+        )
         .with_state(state)
 }
 
@@ -322,6 +326,33 @@ async fn get_all_pools(
             Ok(Json(Vec::new()))
         }
     }
+}
+
+pub async fn get_token_aggregate_liquidity(
+    Path((token1_addr, dex, chain_id)): Path<(String, String, u64)>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<LiquidityDistribution>, ApiError> {
+    let token1_address = parse_address(&token1_addr)
+        .map_err(|e| ApiError {
+            message: format!("Invalid token address `{}`: {:?}", token1_addr, e),
+            code: 400,
+        })?;
+
+    let dist = aggregate_liquidity_dexes(
+        state.storage.clone(),
+        token1_address,
+        chain_id,
+    )
+    .await
+    .map_err(|e| {
+        error!("Error aggregating liquidity: {}", e);
+        ApiError {
+            message: "Internal server error".to_string(),
+            code: 500,
+        }
+    })?;
+
+    Ok(Json(dist))
 }
 
 /// Run the API server

@@ -1,21 +1,24 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { TokenSelector } from '@/components/TokenSelector';
 import { LiquidityChart } from '@/components/LiquidityChart';
 import { StatsSummary } from '@/components/StatsSummary';
 import { PoolList } from '@/components/PoolList';
 import { useLiquidityData } from '@/hooks/useLiquidityData';
-import { Loader2, RefreshCw, AlertCircle, List, BarChart3 } from 'lucide-react';
+import { Loader2, RefreshCw, AlertCircle, List, BarChart3, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Pool } from '@/types/api';
 
 export default function HomePage() {
+  const router = useRouter();
   const [tokens, setTokens] = useState<{ token0: string; token1: string } | null>(null);
   const [filters, setFilters] = useState<{ chainId?: number; dex?: string }>({});
   const [selectedPool, setSelectedPool] = useState<Pool | null>(null);
   const [currentView, setCurrentView] = useState<'pools' | 'analysis'>('pools');
   const [priceType, setPriceType] = useState<'wall' | 'current'>('wall');
+  const [statsMode, setStatsMode] = useState<'pair' | 'aggregate'>('pair');
 
   const { data, error, isLoading, refresh } = useLiquidityData(
     tokens?.token0 || null,
@@ -82,15 +85,33 @@ export default function HomePage() {
               </div>
               
               {data && currentView === 'analysis' && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleRefresh}
-                  isLoading={isLoading}
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Refresh
-                </Button>
+                <>
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant={statsMode === 'pair' ? 'primary' : 'outline'}
+                      size="sm"
+                      onClick={() => setStatsMode('pair')}
+                    >
+                      Pair Analysis
+                    </Button>
+                    <Button
+                      variant={statsMode === 'aggregate' ? 'primary' : 'outline'}
+                      size="sm"
+                      onClick={() => setStatsMode('aggregate')}
+                    >
+                      Token Aggregate
+                    </Button>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRefresh}
+                    isLoading={isLoading}
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Refresh
+                  </Button>
+                </>
               )}
               <div className="text-sm text-gray-500">
                 {data && currentView === 'analysis' && `Last updated: ${new Date(data.timestamp).toLocaleTimeString()}`}
@@ -109,10 +130,25 @@ export default function HomePage() {
               <h2 className="text-2xl font-bold text-gray-900 mb-4">
                 Available Liquidity Pools
               </h2>
-              <p className="text-gray-600 max-w-2xl mx-auto">
+              <p className="text-gray-600 max-w-2xl mx-auto mb-4">
                 Browse and select from available liquidity pools across multiple DEXes. 
                 Click on any pool to analyze its liquidity distribution.
               </p>
+              
+              {/* Quick Access to Token Aggregate */}
+              <div className="inline-flex items-center gap-4 bg-purple-50 border border-purple-200 rounded-lg p-3">
+                <div className="text-sm text-purple-800">
+                  <span className="font-medium">Looking for token-wide analysis?</span>
+                </div>
+                <Button 
+                  onClick={() => router.push('/token-aggregate')}
+                  size="sm"
+                  variant="primary"
+                >
+                  <TrendingUp className="h-4 w-4 mr-2" />
+                  Token Aggregate
+                </Button>
+              </div>
             </div>
             
             <PoolList 
@@ -158,14 +194,41 @@ export default function HomePage() {
                       </div>
                     </div>
                   </div>
-                  <div className="mt-6">
-                    <Button 
-                      onClick={() => setCurrentView('pools')}
-                      variant="outline"
-                    >
-                      <List className="h-4 w-4 mr-2" />
-                      Browse Available Pools
-                    </Button>
+                  <div className="mt-6 space-y-4">
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <Button 
+                        onClick={() => setCurrentView('pools')}
+                        variant="outline"
+                      >
+                        <List className="h-4 w-4 mr-2" />
+                        Browse Available Pools
+                      </Button>
+                      <Button 
+                        onClick={() => router.push('/token-aggregate')}
+                        variant="primary"
+                      >
+                        <TrendingUp className="h-4 w-4 mr-2" />
+                        Token Aggregate Analysis
+                      </Button>
+                    </div>
+                    
+                    {/* Token Aggregate Feature Card */}
+                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mt-4">
+                      <div className="flex items-start">
+                        <TrendingUp className="h-5 w-5 text-purple-600 mt-0.5 mr-3" />
+                        <div className="text-sm text-purple-800">
+                          <p className="font-medium mb-1">🚀 New: Token Aggregate Analysis</p>
+                          <p className="mb-2">
+                            Analyze any token&apos;s liquidity across all major trading pairs (WETH, USDC, USDT, DAI, WBTC) in one view.
+                          </p>
+                          <ul className="list-disc list-inside space-y-1 text-left text-xs">
+                            <li>Cross-DEX liquidity aggregation</li>
+                            <li>Comprehensive market depth analysis</li>
+                            <li>Single token focus instead of pair analysis</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -256,6 +319,9 @@ export default function HomePage() {
                         currentPrice={data.price}
                         token0Symbol={data.token0.symbol}
                         token1Symbol={data.token1.symbol}
+                        mode={statsMode}
+                        tokenAddress={statsMode === 'aggregate' ? tokens?.token0 : undefined}
+                        chainId={filters.chainId || 1}
                       />
                     </div>
                   </div>

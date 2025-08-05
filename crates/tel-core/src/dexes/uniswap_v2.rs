@@ -11,6 +11,7 @@ use alloy_sol_types::sol;
 use async_trait::async_trait;
 use chrono::Utc;
 use std::sync::Arc;
+use std::str::FromStr;
 
 sol! {
     // ── Uniswap V2 Factory ───────────────────────────────────────────
@@ -126,29 +127,23 @@ impl UniswapV2 {
     }
 
     fn build_cumulative_price_levels(
-        reserves: (u128, u128),
+        reserves: (f64, f64),
     ) -> Vec<PriceLiquidity> {
-        let current_price = reserves.1 as f64 / reserves.0 as f64;
-    
+        let current_price = if reserves.0 > 0.0 { reserves.1 / reserves.0 } else { 0.0 };
+
         (-50..=100)
             .map(|i| {
-                let factor   = 1.0 + i as f64 / 100.0;
-                let sqrt_f   = factor.sqrt();
-    
+                let factor = 1.0 + i as f64 / 100.0;
+                let sqrt_f = factor.sqrt();
+
                 // price up (f > 1) : token0 is sold and removed from pool
                 // price down (f < 1) : token1 is sold and removed from pool
                 let (liq0, liq1) = if factor >= 1.0 {
-                    (
-                        reserves.0 as f64 * (1.0 - 1.0 / sqrt_f),
-                        0.0,
-                    )
+                    (reserves.0 * (1.0 - 1.0 / sqrt_f), 0.0)
                 } else {
-                    (
-                        0.0,
-                        reserves.1 as f64 * (1.0 - sqrt_f),
-                    )
+                    (0.0, reserves.1 * (1.0 - sqrt_f))
                 };
-    
+
                 PriceLiquidity {
                     side: if factor >= 1.0 { Side::Sell } else { Side::Buy },
                     lower_price: current_price * factor,
@@ -160,6 +155,8 @@ impl UniswapV2 {
             })
             .collect()
     }
+
+    
 }
 
 #[async_trait]
@@ -186,7 +183,7 @@ impl DexProtocol for UniswapV2 {
 
     /// Retrieves information about a specific Uniswap V2 pool by its address.
     ///
-    /// Returns a `Pool` object with placeholder token data. In production, this would fetch real pool and token metadata from the blockchain.
+    /// Fetches pool and token metadata from the blockchain and saves it to storage.
     ///
     /// # Arguments
     ///
@@ -194,7 +191,7 @@ impl DexProtocol for UniswapV2 {
     ///
     /// # Returns
     ///
-    /// A `Result` containing the `Pool` object with dummy tokens, or an error if retrieval fails.
+    /// A `Result` containing the `Pool` object, or an error if retrieval fails.
     ///
     /// # Examples
     ///
@@ -202,45 +199,39 @@ impl DexProtocol for UniswapV2 {
     /// let pool = uniswap_v2.get_pool(Address::from_low_u64_be(0x1234)).await?;
     /// assert_eq!(pool.address, Address::from_low_u64_be(0x1234));
     /// ```
-    async fn get_pool(&self, _pool_address: Address) -> Result<Pool, Error> {
-        // This is a placeholder implementation
-        // In production, we'd use provider.call() with correct parameters
-        let pool_result = get_pool_async(self.storage.clone(), _pool_address).await;
-        match pool_result {
-            Ok(Some(pool)) => Ok(pool),
-            Ok(None) => Err(Error::DexError(format!(
-                "Pool not found: {}",
-                _pool_address
-            ))),
-            Err(e) => Err(e),
-        }
-        // For simplicity, creating a dummy pool
-        // let token0 = Token {
-        //     address: Address::ZERO,
-        //     symbol: "DUMMY0".to_string(),
-        //     name: "Dummy Token 0".to_string(),
-        //     decimals: 18,
-        //     chain_id: self.chain_id(),
-        // };
+    async fn get_pool(&self, pool_address: Address) -> Result<Pool, Error> {
+        let inner = self.provider.provider();
+        let pair = IUniswapV2Pair::new(pool_address, inner.clone());
 
-        // let token1 = Token {
-        //     address: Address::ZERO,
-        //     symbol: "DUMMY1".to_string(),
-        //     name: "Dummy Token 1".to_string(),
-        //     decimals: 18,
-        //     chain_id: self.chain_id(),
-        // };
+        let t0_addr = pair
+            .token0()
+            .call()
+            .await
+            .map_err(|e| Error::ProviderError(format!("token0(): {e}")))?;
 
-        // Ok(Pool {
-        //     address: pool_address,
-        //     dex: self.name().to_string(),
-        //     chain_id: self.chain_id(),
-        //     tokens: vec![token0, token1],
-        //     creation_block: 0,
-        //     creation_timestamp: Utc::now(),
-        //     last_updated_block: 0,
-        //     last_updated_timestamp: Utc::now(),
-        // })
+        let t1_addr = pair
+            .token1()
+            .call()
+            .await
+            .map_err(|e| Error::ProviderError(format!("token1(): {e}")))?;
+
+        let token0 = self.fetch_or_load_token(t0_addr).await?;
+        let token1 = self.fetch_or_load_token(t1_addr).await?;
+
+        let pool = Pool {
+            address: pool_address,
+            dex: self.name().into(),
+            chain_id: self.chain_id(),
+            tokens: vec![token0, token1],
+            creation_block: 0,
+            creation_timestamp: Utc::now(),
+            last_updated_block: 0,
+            last_updated_timestamp: Utc::now(),
+            fee: 3000, // 0.3% = 3000 (UniswapV2 standard)
+        };
+
+        save_pool_async(self.storage.clone(), pool.clone()).await?;
+        Ok(pool)
     }
 
     /// Retrieves up to 10 Uniswap V2 pools from the factory contract and saves them to storage.
@@ -356,9 +347,14 @@ impl DexProtocol for UniswapV2 {
         let token0 = &pool.tokens[0];
         let token1 = &pool.tokens[1];
 
-        // Convert reserves to float for price calculation
-        let reserve0_float = reserve0 as f64 / 10f64.powi(token0.decimals as i32);
-        let reserve1_float = reserve1 as f64 / 10f64.powi(token1.decimals as i32);
+        // Convert reserves to float for price calculation, avoiding precision loss by using strings.
+        let reserve0_str = reserve0.to_string();
+        let reserve1_str = reserve1.to_string();
+        let reserve0_f64 = reserve0_str.parse::<f64>().unwrap_or(0.0);
+        let reserve1_f64 = reserve1_str.parse::<f64>().unwrap_or(0.0);
+
+        let reserve0_float = reserve0_f64 / 10f64.powi(token0.decimals as i32);
+        let reserve1_float = reserve1_f64 / 10f64.powi(token1.decimals as i32);
 
         // Calculate price (token1/token0)
         let current_price = if reserve0_float > 0.0 {
@@ -367,7 +363,7 @@ impl DexProtocol for UniswapV2 {
             0.0
         };
 
-        let price_levels = Self::build_cumulative_price_levels((reserve0, reserve1));
+        let price_levels = Self::build_cumulative_price_levels((reserve0_float, reserve1_float));
         let per_tick_levels: Vec<PriceLiquidity> = price_levels
             .windows(2)
             .map(|w| PriceLiquidity {

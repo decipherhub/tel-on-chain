@@ -1,12 +1,23 @@
 use crate::error::Error;
-use crate::models::{LiquidityDistribution, Pool, Token};
+use crate::models::{LiquidityDistribution, Pool, PriceLiquidity, Token};
+use crate::utils::{bucket_price_levels, merge_two_liquidity_distributions};
 use crate::Result;
 use alloy_primitives::Address;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use rusqlite::{params, Connection};
 use serde_json;
+use tracing::info;
+use std::ops::Add;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
+
+
+const WETH_TOKEN: &str = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
+const USDC_TOKEN: &str = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+const DAI_TOKEN: &str = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
+const USDT_TOKEN: &str = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
+const WBTC_TOKEN: &str = "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599";
+const DEXES: [&str; 2] = ["uniswap_v2", "uniswap_v3"];
 
 #[async_trait::async_trait]
 pub trait Storage: Send + Sync {
@@ -35,7 +46,9 @@ pub trait Storage: Send + Sync {
         token1: Address,
         dex: &str,
         chain_id: u64,
-    ) -> Result<Option<LiquidityDistribution>>;
+    ) -> Result<Option<LiquidityDistribution>>; // TODO: this should return a vector of LiquidityDistribution
+
+
 }
 
 pub struct SqliteStorage {
@@ -470,9 +483,6 @@ impl Storage for SqliteStorage {
     fn get_all_pools_paginated(&self, chain_id: u64, limit: u64, offset: u64) -> Result<Vec<Pool>> {
         let conn = self.conn.lock().unwrap();
         
-        // Get pools from all supported DEXes with pagination
-        let dexes = ["uniswap_v3", "uniswap_v2", "sushiswap"];
-        
         let mut stmt = conn
             .prepare("SELECT p.address, p.chain_id, p.dex, p.token0_address, p.token1_address, p.fee,
                             t0.symbol as token0_symbol, t0.name as token0_name, t0.decimals as token0_decimals,
@@ -718,32 +728,296 @@ impl Storage for SqliteStorage {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn
             .prepare(
-                "SELECT data FROM liquidity_distributions 
-             WHERE token0_address = ?1 AND token1_address = ?2 AND dex = ?3 AND chain_id = ?4
-             ORDER BY timestamp DESC LIMIT 1",
+                "SELECT data
+                 FROM liquidity_distributions
+                 WHERE token0_address = ?
+                   AND token1_address = ?
+                   AND dex            = ?
+                   AND chain_id       = ?
+                 ORDER BY timestamp DESC
+                 LIMIT 1",
             )
-            .map_err(|e| {
-                Error::DatabaseError(format!("prepare get_liquidity_distribution: {e}"))
-            })?;
-
-        let distribution_opt = stmt.query_row(
-            params![token0.to_string(), token1.to_string(), dex, chain_id],
-            |row| {
-                let data: String = row.get(0)?;
-                let distribution: LiquidityDistribution = serde_json::from_str(&data)
-                    .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-                Ok(Some(distribution))
-            },
+            .map_err(|e| Error::DatabaseError(format!("prepare get_liquidity_distribution: {e}")))?;
+        
+        let row_res: rusqlite::Result<String> = stmt.query_row(
+            params![
+                token0.to_string(),
+                token1.to_string(),
+                dex,
+                chain_id,
+            ],
+            |row| row.get(0),
         );
+    
+        let json_str = match row_res {
+            Ok(s) => s,
+            Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(None),
+            Err(e) => {
+                return Err(Error::DatabaseError(format!(
+                    "get_liquidity_distribution query error: {e}"
+                )))
+            }
+        };
 
-        match distribution_opt {
-            Ok(distribution) => Ok(distribution),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(Error::DatabaseError(format!(
-                "get_liquidity_distribution error: {e}"
-            ))),
+        let distribution: LiquidityDistribution = serde_json::from_str(&json_str)
+            .map_err(|e| Error::DatabaseError(format!("JSON parse error: {e}")))?;
+
+        Ok(Some(distribution))
+    }
+}
+    // get_pools_by_token0 : only input token0 address & query all the pools that have token0 as token0_address
+// pub async fn get_pools_by_token0(
+//     storage: Arc<dyn Storage>,
+//     token0: Address,
+//     chain_id: u64,
+// ) -> Result<Vec<Pool>> {
+//     let conn = self.conn.lock().unwrap();
+//         let mut stmt = conn
+//             .prepare(
+//                 "SELECT data FROM liquidity_distributions 
+//              WHERE token0_address = ?1  AND dex = ?2 AND chain_id = ?3
+//              ORDER BY timestamp DESC LIMIT 1",
+//             )
+//             .map_err(|e| {
+//                 Error::DatabaseError(format!("prepare get_liquidity_distribution: {e}"))
+//             })?;
+//     storage.get_pools_by_token(token0, Address::default(), chain_id)
+// }   
+
+pub async fn reverse_pair(
+    distribution: LiquidityDistribution,
+) -> Result<LiquidityDistribution> {
+    let LiquidityDistribution {
+        token0,
+        token1,
+        dex,
+        chain_id,
+        timestamp,
+        current_price,
+        price_levels,
+    } = distribution;
+
+    let reversed_levels: Vec<PriceLiquidity> = price_levels
+        .into_iter()
+        .map(|pl| PriceLiquidity {
+            side: pl.side,  // 필요하다면 Buy<->Sell도 뒤집을 수 있음
+            // 가격 구간도 상하한을 뒤집어서 역수로
+            lower_price: 1.0 / pl.upper_price,
+            upper_price: 1.0 / pl.lower_price,
+            // 토큰 유동성도 서로 스왑
+            token0_liquidity: pl.token1_liquidity,
+            token1_liquidity: pl.token0_liquidity,
+            timestamp: pl.timestamp,
+        })
+        .collect();
+
+    let reversed_price = 1.0 / current_price;
+
+    let reversed_distribution = LiquidityDistribution {
+        token0: token1,
+        token1: token0,
+        dex,
+        chain_id,
+        timestamp,
+        current_price: reversed_price,
+        price_levels: reversed_levels,
+    };
+
+    Ok(reversed_distribution)
+}
+
+pub async fn reverse_current_price_only(
+    distribution: LiquidityDistribution,
+) -> Result<LiquidityDistribution> {
+    Ok(LiquidityDistribution {
+        current_price: 1.0 / distribution.current_price,
+        ..distribution
+    })
+}
+
+
+pub async fn get_current_price(
+    storage: Arc<dyn Storage>,
+    token0: Address,
+    token1: Address,
+    dex : &str,
+    chain_id: u64,
+    )  -> Result<f64> {
+    let liquidity_distribution = 
+        match storage.get_liquidity_distribution  (token0, token1, dex, chain_id)? {
+            Some(distribution) => Some(distribution),
+            // If no distribution found for (token0, token1), try (token1, token0)
+            None => match storage.get_liquidity_distribution(token1, token0, dex, chain_id)?
+            {
+                Some(distribution) => Some(reverse_current_price_only(distribution).await?),
+                None => return Ok(0.0), // Return 0.0 if no distribution found for both pairs
+            },
+        };
+    if let Some(distribution) = liquidity_distribution {
+        return Ok(distribution.current_price)
+    }
+    Ok(0.0)
+}
+
+// TODO: consider a case where token1 is in the place of token0
+// TODO: aggregate with equal interval
+pub async fn aggregate_liquidity_dexes(
+    storage: Arc<dyn Storage>,
+    token1: Address,
+    chain_id: u64,
+) -> Result<LiquidityDistribution> {
+    let mut distributions = Vec::new();
+    for &dex in &DEXES {
+        let dist = aggregate_liquidity_token1(
+            storage.clone(),
+            token1,
+            dex,
+            chain_id,
+        )
+        .await?;
+        distributions.push(dist);
+    }
+
+    if distributions.is_empty() {
+        return Err(Error::DexError("No liquidity distributions found for any DEX".to_string()));
+    }
+
+    let mut merged_dist = distributions[0].clone();
+    for dist_to_merge in distributions.iter().skip(1) {
+        if let Some(newly_merged) = merge_two_liquidity_distributions(&merged_dist, dist_to_merge) {
+            merged_dist = newly_merged;
+        } else {
+            info!("Failed to merge distributions for token {}", token1);
         }
     }
+    merged_dist.dex = "aggregated".to_string();
+
+    Ok(merged_dist)
+}
+
+pub async fn aggregate_liquidity_token1(
+    storage: Arc<dyn Storage>,
+    token1: Address,
+    dex_for_price_reference : &str,
+    chain_id: u64,
+) -> Result<LiquidityDistribution>{
+    let Token1 = storage.get_token(token1, chain_id)?
+        .ok_or(Error::InvalidAddress(token1.to_string()))?;
+    let usdc_address = Address::from_str(USDC_TOKEN).unwrap();
+    
+    let token_constants = [WETH_TOKEN, WBTC_TOKEN, USDT_TOKEN, DAI_TOKEN];
+    let mut token_prices = Vec::new();
+    
+    for &token_str in &token_constants {
+        let price = get_current_price(
+            storage.clone(), 
+            Address::from_str(token_str).unwrap(), 
+            usdc_address, 
+            dex_for_price_reference, 
+            chain_id
+        ).await?;
+        token_prices.push((Address::from_str(token_str).unwrap(), price));
+    }
+    
+    // get token1 - WETH/USDC/DAI/USDT/WBTC pair price
+    let dummy_dist = LiquidityDistribution {
+        token0: Token {
+            address: token1,
+            symbol: "DUMMY".to_string(),
+            name: "DUMMY".to_string(),
+            decimals: 18,
+            chain_id: chain_id,
+        },
+        token1: Token {
+            address: Address::from_str(WETH_TOKEN).unwrap(),
+            symbol: "WETH".to_string(),
+            name: "Wrapped Ether".to_string(),
+            decimals: 18,
+            chain_id: chain_id,
+        },
+        current_price: 0.0,
+        dex: dex_for_price_reference.to_string(),
+        chain_id: chain_id,
+        price_levels: vec![],
+        timestamp: Utc::now(),
+    };
+    let paired_token_addresses = [
+        WETH_TOKEN,
+        USDC_TOKEN,
+        USDT_TOKEN,
+        DAI_TOKEN,
+        WBTC_TOKEN,
+    ];
+    
+    let mut distributions = Vec::new();
+    let mut usdc_pair_distribution = dummy_dist.clone();
+    
+    for &token_addr in &paired_token_addresses {
+        // TODO: conduct this for all DEXes
+        let mut distribution = match storage.get_liquidity_distribution(
+            token1, Address::from_str(token_addr).unwrap(), dex_for_price_reference, chain_id
+        )? {
+            Some(dist) => dist,
+            None => dummy_dist.clone(),
+        };
+        
+        if token_addr == USDC_TOKEN {
+            usdc_pair_distribution = distribution;
+        } else {
+            distributions.push(distribution);
+        }        
+    }
+    let mut ret = usdc_pair_distribution.price_levels.clone();
+    
+    if let Some((_, weth_price)) = token_prices.iter().find(|(addr, _)| *addr == Address::from_str(WETH_TOKEN).unwrap()) {
+        info!("weth_price: {}", weth_price);
+    }
+    
+    for dist in distributions {
+        for (token_address, price) in token_prices.iter() {
+            if dist.token1.address == *token_address {
+                for mut price_level in dist.price_levels {
+                    price_level.lower_price = price_level.lower_price / price;
+                    price_level.upper_price = price_level.upper_price / price;
+                    price_level.token1_liquidity = price_level.token1_liquidity * price;
+                    ret.push(price_level);
+                }
+                break;
+            }
+        }
+    }
+    // bucket price levels, sort price levels by lower price
+    let bucket_size = 0.001;
+    ret.sort_by(|a, b| a.lower_price.partial_cmp(&b.lower_price).unwrap());
+    let mut bucketed_ret = Vec::new();
+    for price_level in ret {
+        let bucket_index = (price_level.lower_price / bucket_size).floor() as i32;
+        bucketed_ret.push(PriceLiquidity {
+            ..price_level
+        });
+    }
+    ret = bucketed_ret;
+
+    let mut aggregate_pool = usdc_pair_distribution.clone();
+    aggregate_pool.price_levels = bucket_price_levels(ret, aggregate_pool.current_price, 0.001);
+    let token1_name = Token1.name.clone();
+    let token1_name = token1_name + "'s Aggregate Liquidity";
+    aggregate_pool.token0 = Token {
+        address: token1,
+        symbol: Token1.symbol.clone(),
+        name: token1_name,
+        decimals: 18,
+        chain_id: chain_id,
+    };
+    aggregate_pool.token1 = Token {
+        address: Address::from_str(USDC_TOKEN).unwrap(),
+        symbol: "USDC".to_string(),
+        name: "USD Coin".to_string(),
+        decimals: 6,
+        chain_id: chain_id,
+    };
+    info!("current price for {} is {}", token1, aggregate_pool.current_price);
+    Ok(aggregate_pool)
 }
 
 pub async fn save_token_async(storage: Arc<dyn Storage>, token: Token) -> Result<()> {
@@ -789,3 +1063,8 @@ pub async fn save_liquidity_distribution_async(
 ) -> Result<()> {
     storage.save_liquidity_distribution(&distribution)
 }
+
+
+
+
+

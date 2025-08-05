@@ -22,10 +22,53 @@ pub struct Indexer {
 }
 
 // Only these pools are indexed in light mode!
-pub const LIGHT_MODE_POOLS: [&str; 3] = [
-    "0xCBCdF9626bC03E24f779434178A73a0B4bad62eD",
-    "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640",
+pub const LIGHT_MODE_POOLS: [&str; 35] = [
     "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+    "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640",
+    "0xCBCdF9626bC03E24f779434178A73a0B4bad62eD",
+    "0x99ac8cA7087fA4A2A1FB6357269965A2014ABc35",
+    "0xe8f7c89C5eFa061e340f2d2F206EC78FD8f7e124",
+    "0x5777d92f208679DB4b9778590Fa3CAB3aC9e2168",
+    "0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36",
+    "0xC5c134A1f112efA96003f8559Dba6fAC0BA77692",
+    "0x1d42064Fc4Beb5F8aAF85F4617AE8b3b5B8Bd801",
+    "0x9Db9e0e53058C89e5B94e29621a205198648425B",
+    "0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8",
+    "0x1d42064Fc4Beb5F8aAF85F4617AE8b3b5B8Bd801",
+    "0xD0fC8bA7E267f2bc56044A7715A489d851dC6D78",
+    "0x3470447f3cecffac709d3e783a307790b0208d60",
+    "0xe0554a476a092703abdb3ef35c80e0d76d32939f",
+    "0xa43fe16908251ee70ef74718545e4fe6c5ccec9f",
+    "0x11950d141ecb863f01007add7d1a342041227b58",
+    "0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc",
+    "0x3139Ffc91B99aa94DA8A2dc13f1fC36F9BDc98eE",
+    "0x12EDE161c702D1494612d19f05992f43aa6A26FB",
+    "0xA478c2975Ab1Ea89e8196811F51A7B7Ade33eB11",
+    "0x07F068ca326a469Fc1d87d85d448990C8cBa7dF9",
+    "0xAE461cA67B15dc8dc81CE7615e0320dA1A9aB8D5",
+    "0xCe407CD7b95B39d3B4d53065E711e713dd5C5999",
+    "0x33C2d48Bc95FB7D0199C5C693e7a9F527145a9Af",
+    "0xB6909B960DbbE7392D405429eB2b3649752b4838",
+    "0x30EB5E15476E6a80F4F3cd8479749b4881DAB1b8",
+    "0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc", //USDC/ETH
+    "0xBb2b8038a1640196FbE3e38816F3e67Cba72D940", //WBTC/ETH
+    "0x0d4a11d5EEaaC28EC3F61d100daF4d40471f1852", //ETH/USDT
+    "0xA478c2975Ab1Ea89e8196811F51A7B7Ade33eB11", //DAI/ETH
+    "0xd3d2E2692501A5c9Ca623199D38826e513033a17", //UNI/ETH
+    "0xd3d2E2692501A5c9Ca623199D38826e513033a17", //DAI/USDC
+    "0xebfb684dd2b01e698ca6c14f10e4f289934a54d6", //UNI/USDC
+    "0x5ac13261c181a9c3938bfe1b649e65d10f98566b", //UNI/USDT
+];
+
+pub const V2_POOLS: [&str; 8] = [
+    "0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc", //USDC/ETH
+    "0xBb2b8038a1640196FbE3e38816F3e67Cba72D940", //WBTC/ETH
+    "0x0d4a11d5EEaaC28EC3F61d100daF4d40471f1852", //ETH/USDT
+    "0xA478c2975Ab1Ea89e8196811F51A7B7Ade33eB11", //DAI/ETH
+    "0xd3d2E2692501A5c9Ca623199D38826e513033a17", //UNI/ETH
+    "0xd3d2E2692501A5c9Ca623199D38826e513033a17", //DAI/USDC
+    "0xebfb684dd2b01e698ca6c14f10e4f289934a54d6", //UNI/USDC
+    "0x5ac13261c181a9c3938bfe1b649e65d10f98566b", //UNI/USDT
 ];
 
 impl Indexer {
@@ -146,25 +189,46 @@ impl Indexer {
 
         // Fetch all pools from each DEX
         for (dex_name, dex) in &self.dexes {
-            info!("Fetching pools for DEX: {}", dex_name);
+            if dex_name == "uniswap_v2" {
+                info!("Fetching pools for DEX: {}", dex_name);
 
-            match dex.get_all_pools().await {
-                Ok(pools) => {
-                    info!("Found {} pools for {}", pools.len(), dex_name);
-                    for pool in pools {
-                        match self.process_pool(&pool).await {
-                            Ok(_) => debug!("Processed pool {} on {}", pool.address, pool.dex),
-                            Err(e) => warn!(
-                                "Failed to process pool {} on {}: {}",
-                                pool.address, pool.dex, e
-                            ),
+                for pool_address in V2_POOLS{
+                    let pool_address = Address::from_str(pool_address)
+                                            .map_err(|_| Error::InvalidAddress(pool_address.to_string()))?;
+                    match dex.get_pool(pool_address).await {
+                        Ok(pool) => {
+                            match self.process_pool(&pool).await {
+                                Ok(_) => debug!("Processed pool {} on {}", pool.address, pool.dex),
+                                Err(e) => warn!(
+                                    "Failed to process pool {} on {}: {}",
+                                    pool.address, pool.dex, e
+                                ),
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Failed to fetch pools for {}: {}", dex_name, e);
                         }
                     }
                 }
-                Err(e) => {
-                    warn!("Failed to fetch pools for {}: {}", dex_name, e);
-                }
+                
             }
+            // match dex.get_all_pools().await {
+            //     Ok(pools) => {
+            //         info!("Found {} pools for {}", pools.len(), dex_name);
+            //         for pool in pools {
+            //             match self.process_pool(&pool).await {
+            //                 Ok(_) => debug!("Processed pool {} on {}", pool.address, pool.dex),
+            //                 Err(e) => warn!(
+            //                     "Failed to process pool {} on {}: {}",
+            //                     pool.address, pool.dex, e
+            //                 ),
+            //             }
+            //         }
+            //     }
+            //     Err(e) => {
+            //         warn!("Failed to fetch pools for {}: {}", dex_name, e);
+            //     }
+            // }
         }
 
         Ok(())
