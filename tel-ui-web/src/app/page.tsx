@@ -63,45 +63,9 @@ export default function HomePage() {
               </span>
             </div>
             <div className="flex items-center space-x-4">
-              {/* View Toggle */}
-              <div className="flex items-center space-x-2">
-                <Button
-                  variant={currentView === 'pools' ? 'primary' : 'outline'}
-                  size="sm"
-                  onClick={() => setCurrentView('pools')}
-                >
-                  <List className="h-4 w-4 mr-2" />
-                  Pools
-                </Button>
-                <Button
-                  variant={currentView === 'analysis' ? 'primary' : 'outline'}
-                  size="sm"
-                  onClick={() => setCurrentView('analysis')}
-                  disabled={!tokens}
-                >
-                  <BarChart3 className="h-4 w-4 mr-2" />
-                  Analysis
-                </Button>
-              </div>
               
               {data && currentView === 'analysis' && (
                 <>
-                  <div className="flex items-center space-x-2">
-                    <Button
-                      variant={statsMode === 'pair' ? 'primary' : 'outline'}
-                      size="sm"
-                      onClick={() => setStatsMode('pair')}
-                    >
-                      Pair Analysis
-                    </Button>
-                    <Button
-                      variant={statsMode === 'aggregate' ? 'primary' : 'outline'}
-                      size="sm"
-                      onClick={() => setStatsMode('aggregate')}
-                    >
-                      Token Aggregate
-                    </Button>
-                  </div>
                   <Button
                     variant="outline"
                     size="sm"
