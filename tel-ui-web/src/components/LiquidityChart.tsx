@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import {
   BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -218,26 +219,32 @@ export function LiquidityChart({ data, currentPrice, token0Symbol, token1Symbol,
             <Tooltip content={<CustomTooltip />} />
             <Legend />
             
+            {/* Buy liquidity bars */}
+            <Bar
+              dataKey="buyLiquidity"
+              fill="#10b981"
+              name="Buy Liquidity"
+              radius={[4, 4, 0, 0]}
+            />
+            
+            {/* Sell liquidity bars */}
+            <Bar
+              dataKey="sellLiquidity"
+              fill="#ef4444"
+              name="Sell Liquidity"
+              radius={[4, 4, 0, 0]}
+            />
+            
             {/* Reference line for current price */}
             <ReferenceLine
               x="0.0%"
               stroke="#8884d8"
               strokeDasharray="5 5"
-              label={{ value: "Current Price", position: "top" }}
+              strokeWidth={2}
+              label={{ value: "Current Price", position: "top", fill: "#8884d8" }}
             />
           </BarChart>
         </ResponsiveContainer>
-      </div>
-
-      <div className="mt-4 flex justify-center space-x-6 text-sm">
-        <div className="flex items-center">
-          <div className="w-3 h-3 bg-green-500 rounded mr-2"></div>
-          <span className="text-gray-600">Buy Walls (Support)</span>
-        </div>
-        <div className="flex items-center">
-          <div className="w-3 h-3 bg-red-500 rounded mr-2"></div>
-          <span className="text-gray-600">Sell Walls (Resistance)</span>
-        </div>
       </div>
     </div>
   );
