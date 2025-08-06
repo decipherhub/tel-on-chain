@@ -43,7 +43,39 @@ export function formatPrice(price: number, token1Symbol?: string): string {
   if (price >= 1) {
     return formatNumber(price, { decimals: 4 }) + suffix;
   }
-  return formatNumber(price, { decimals: 6 }) + suffix;
+  
+  // For small numbers, calculate decimals based on leading zeros
+  if (price === 0) {
+    return '0' + suffix;
+  }
+  
+  // Handle scientific notation by converting to fixed decimal
+  const priceStr = price < 1e-6 ? price.toFixed(12) : price.toString();
+  const decimalIndex = priceStr.indexOf('.');
+  
+  if (decimalIndex === -1) {
+    // No decimal point, use standard formatting
+    return formatNumber(price, { decimals: 6 }) + suffix;
+  }
+  
+  let leadingZeros = 0;
+  for (let i = decimalIndex + 1; i < priceStr.length; i++) {
+    if (priceStr[i] === '0') {
+      leadingZeros++;
+    } else {
+      break;
+    }
+  }
+  
+  // Show at least 4 significant digits after the first non-zero digit
+  // For numbers with many leading zeros, show more decimals
+  let decimals = 6; // default minimum
+  if (leadingZeros >= 3) {
+    // For numbers like 0.000123, show leadingZeros + 4 significant digits
+    decimals = Math.min(leadingZeros + 4, 12); // cap at 12 decimals
+  }
+  
+  return formatNumber(price, { decimals }) + suffix;
 }
 
 export function formatPriceRange(priceLower: number, priceUpper: number, token1Symbol?: string): string {
