@@ -7,7 +7,7 @@ import { LiquidityChart } from '@/components/LiquidityChart';
 import { StatsSummary } from '@/components/StatsSummary';
 import { PoolList } from '@/components/PoolList';
 import { useLiquidityData } from '@/hooks/useLiquidityData';
-import { Loader2, RefreshCw, AlertCircle, List, BarChart3, TrendingUp } from 'lucide-react';
+import { Loader2, RefreshCw, AlertCircle, List, TrendingUp, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Pool } from '@/types/api';
 
@@ -18,7 +18,7 @@ export default function HomePage() {
   const [selectedPool, setSelectedPool] = useState<Pool | null>(null);
   const [currentView, setCurrentView] = useState<'pools' | 'analysis'>('pools');
   const [priceType, setPriceType] = useState<'wall' | 'current'>('wall');
-  const [statsMode, setStatsMode] = useState<'pair' | 'aggregate'>('pair');
+  const [statsMode] = useState<'pair' | 'aggregate'>('pair');
 
   const { data, error, isLoading, refresh } = useLiquidityData(
     tokens?.token0 || null,
@@ -50,6 +50,12 @@ export default function HomePage() {
     }
   };
 
+  const handleBackToPools = () => {
+    setCurrentView('pools');
+    setSelectedPool(null);
+    setTokens(null);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -57,6 +63,17 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center">
+              {currentView === 'analysis' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleBackToPools}
+                  className="mr-4"
+                >
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Pools
+                </Button>
+              )}
               <h1 className="text-2xl font-bold text-gray-900">tel-on-chain</h1>
               <span className="ml-3 px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded">
                 Beta
@@ -161,7 +178,7 @@ export default function HomePage() {
                   <div className="mt-6 space-y-4">
                     <div className="flex flex-col sm:flex-row gap-3">
                       <Button 
-                        onClick={() => setCurrentView('pools')}
+                        onClick={handleBackToPools}
                         variant="outline"
                       >
                         <List className="h-4 w-4 mr-2" />
@@ -215,13 +232,6 @@ export default function HomePage() {
                           Pool Address: {selectedPool.address}
                         </p>
                       </div>
-                      <Button
-                        onClick={() => setCurrentView('pools')}
-                        variant="outline"
-                        size="sm"
-                      >
-                        Change Pool
-                      </Button>
                     </div>
                   </div>
                 )}
