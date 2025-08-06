@@ -90,11 +90,8 @@ export default function TokenAggregatePage() {
         {/* Search Section */}
         <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            Analyze Token Liquidity Across All Major Pairs
+            🔍 Analyze Token Liquidity (Across Major Pairs)
           </h2>
-          <p className="text-gray-600 mb-6">
-            Enter a token address to see aggregated liquidity data across WETH, USDC, USDT, DAI, and WBTC pairs.
-          </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="flex gap-4">
@@ -209,13 +206,10 @@ export default function TokenAggregatePage() {
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-xl font-bold text-gray-900">
-                    {data.token0.symbol} Aggregate Liquidity Analysis
+                    <span className="text-blue-600">{data.token0.symbol}</span>
                   </h3>
-                  <p className="text-sm text-gray-500 mt-1">
-                    {data.token0.name} • Across all major trading pairs
-                  </p>
                   <p className="text-xs text-gray-400 mt-1 font-mono">
-                    Token: {data.token0.address}
+                    Token Address: {data.token0.address}
                   </p>
                 </div>
                 <div className="text-right">

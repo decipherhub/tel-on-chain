@@ -226,19 +226,6 @@ export function LiquidityChart({ data, currentPrice, token0Symbol, token1Symbol,
               strokeDasharray="5 5"
               label={{ value: "Current Price", position: "top" }}
             />
-            
-            <Bar
-              dataKey="buyLiquidity"
-              fill="#10b981"
-              name="Buy Liquidity"
-              radius={[2, 2, 0, 0]}
-            />
-            <Bar
-              dataKey="sellLiquidity"
-              fill="#ef4444"
-              name="Sell Liquidity"
-              radius={[2, 2, 0, 0]}
-            />
           </BarChart>
         </ResponsiveContainer>
       </div>
