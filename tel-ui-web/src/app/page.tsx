@@ -242,13 +242,13 @@ export default function HomePage() {
                     <div className="flex items-center justify-between">
                       <div>
                         <h3 className="font-medium text-gray-900">
-                          Analyzing: {selectedPool.tokens[0]?.symbol}/{selectedPool.tokens[1]?.symbol}
+                          <span className="text-blue-600">{selectedPool.tokens[0]?.symbol}</span>/<span className="text-purple-600">{selectedPool.tokens[1]?.symbol}</span>
                         </h3>
                         <p className="text-sm text-gray-500">
                           {selectedPool.dex.replace('_', ' ').toUpperCase()} • Fee: {(selectedPool.fee / 10000).toFixed(2)}%
                         </p>
                         <p className="text-xs text-gray-400 mt-1 font-mono">
-                          Pool: {selectedPool.address}
+                          Pool Address: {selectedPool.address}
                         </p>
                       </div>
                       <Button
