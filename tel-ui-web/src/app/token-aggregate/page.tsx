@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/Input';
 import { StatsSummary } from '@/components/StatsSummary';
 import { LiquidityChart } from '@/components/LiquidityChart';
 import { useTokenAggregateData } from '@/hooks/useTokenAggregateData';
-import { formatNumber } from '@/lib/utils';
 
 export default function TokenAggregatePage() {
   const router = useRouter();
@@ -226,38 +225,16 @@ export default function TokenAggregatePage() {
 
             {/* Aggregate Stats */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {/* Liquidity Overview */}
-              <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                  Liquidity Overview
-                </h3>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Total Price Levels</span>
-                    <span className="font-semibold">{data.price_levels.length}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Buy Levels</span>
-                    <span className="font-semibold text-green-600">
-                      {data.price_levels.filter(level => level.side === 'Buy').length}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Sell Levels</span>
-                    <span className="font-semibold text-red-600">
-                      {data.price_levels.filter(level => level.side === 'Sell').length}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Total Liquidity</span>
-                    <span className="font-bold">
-                      {formatNumber(
-                        data.price_levels.reduce((sum, level) => sum + level.token1_liquidity, 0),
-                        { compact: true }
-                      )} {data.token1.symbol}
-                    </span>
-                  </div>
-                </div>
+              {/* Liquidity Chart */}
+              <div>
+                <LiquidityChart
+                  data={chartData}
+                  currentPrice={data.current_price}
+                  token0Symbol={data.token0.symbol}
+                  token1Symbol={data.token1.symbol}
+                  priceType={priceType}
+                  onPriceTypeChange={setPriceType}
+                />
               </div>
 
               {/* Stats Summary Component */}
@@ -270,18 +247,6 @@ export default function TokenAggregatePage() {
                 mode="aggregate"
                 tokenAddress={submittedToken}
                 chainId={chainId}
-              />
-            </div>
-
-            {/* Liquidity Chart */}
-            <div className="mt-8">
-              <LiquidityChart
-                data={chartData}
-                currentPrice={data.current_price}
-                token0Symbol={data.token0.symbol}
-                token1Symbol={data.token1.symbol}
-                priceType={priceType}
-                onPriceTypeChange={setPriceType}
               />
             </div>
           </div>
