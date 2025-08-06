@@ -317,82 +317,83 @@ impl DexProtocol for UniswapV3 {
     }
 
     async fn get_all_pools(&self) -> Result<Vec<Pool>> {
+        self.get_all_pools_test().await
 
-        let provider = self.provider.provider();
-        //let latest_block: u64 = provider.get_block_number().await.map_err(|e| Error::ProviderError(format!("get_block_number: {}", e)))?;
-        let latest_block = 12380000; // For testing, replace with actual block number retrieval
-        let mut from_block = 12378000;
-        let mut all_logs = Vec::new();
-        let mut i = 0;
-        while from_block < latest_block {
-            let to_block = (from_block + 9999).min(latest_block);
-            info!("Fetching logs from block {} to {}", from_block, to_block);
+        // let provider = self.provider.provider();
+        // //let latest_block: u64 = provider.get_block_number().await.map_err(|e| Error::ProviderError(format!("get_block_number: {}", e)))?;
+        // let latest_block = 12380000; // For testing, replace with actual block number retrieval
+        // let mut from_block = 12378000;
+        // let mut all_logs = Vec::new();
+        // let mut i = 0;
+        // while from_block < latest_block {
+        //     let to_block = (from_block + 9999).min(latest_block);
+        //     info!("Fetching logs from block {} to {}", from_block, to_block);
 
-            let filter = self.build_pool_created_filter(from_block, to_block);
-            let logs = self.get_logs(filter).await?;
-            all_logs.extend(logs);
-            from_block = to_block + 1;
-            i += 1;
-        }
+        //     let filter = self.build_pool_created_filter(from_block, to_block);
+        //     let logs = self.get_logs(filter).await?;
+        //     all_logs.extend(logs);
+        //     from_block = to_block + 1;
+        //     i += 1;
+        // }
 
-        info!("Found a total of {} pools", all_logs.len());
+        // info!("Found a total of {} pools", all_logs.len());
 
-        let mut pools = Vec::with_capacity(all_logs.len());
-        let mut pools_count = 0;
-        for log in &all_logs {
-            //if pools_count >= 10 { break; }
-            //info!("Processing log: topics={:?}, data={:?}", log.topics(), log.data());
-            // topics: [topic0, token0, token1, fee]
-            if log.topics().len() < 4 { continue; }
-            let token0 = Address::from_slice(&log.topics()[1].as_slice()[12..]);
-            let token1 = Address::from_slice(&log.topics()[2].as_slice()[12..]);
-            let fee_bytes = log.topics()[3].as_slice();
-            let fee = ((fee_bytes[29] as u32) << 16)
-                | ((fee_bytes[30] as u32) << 8)
-                | (fee_bytes[31] as u32);
-            // data: [tickSpacing(int24)|poolAddress]
-            let data_slice: &[u8] = log.data().data.as_ref();
-            if data_slice.len() < 64 {
-                continue;
-            }
-            let pool_addr = Address::from_slice(&data_slice[44..64]);
-            let tok0 = match self.fetch_or_load_token(token0).await {
-                Ok(token) => token,
-                Err(e) => {
-                    tracing::error!("Failed to fetch token {}: {}", token0, e);
-                    continue;
-                }
-            };
-            let tok1 = match self.fetch_or_load_token(token1).await {
-                Ok(token) => token,
-                Err(e) => {
-                    tracing::error!("Failed to fetch token {}: {}", token1, e);
-                    continue;
-                }
-            };
-            let block_number: u64 = log.block_number.unwrap_or(0);
-            let pool = Pool {
-                address: pool_addr,
-                dex: self.name().into(),
-                chain_id: self.chain_id(),
-                tokens: vec![tok0, tok1],
-                creation_block: block_number,
-                creation_timestamp: Utc::now(),
-                last_updated_block: block_number,
-                last_updated_timestamp: Utc::now(),
-                fee: fee as u64,
-            };
-            let pool_address = pool.address;
-            if let Err(e) = save_pool_async(self.storage.clone(), pool.clone()).await {
-                tracing::error!("Failed to save pool {}: {}", pool_address, e);
-                continue;
-            };
+        // let mut pools = Vec::with_capacity(all_logs.len());
+        // let mut pools_count = 0;
+        // for log in &all_logs {
+        //     //if pools_count >= 10 { break; }
+        //     //info!("Processing log: topics={:?}, data={:?}", log.topics(), log.data());
+        //     // topics: [topic0, token0, token1, fee]
+        //     if log.topics().len() < 4 { continue; }
+        //     let token0 = Address::from_slice(&log.topics()[1].as_slice()[12..]);
+        //     let token1 = Address::from_slice(&log.topics()[2].as_slice()[12..]);
+        //     let fee_bytes = log.topics()[3].as_slice();
+        //     let fee = ((fee_bytes[29] as u32) << 16)
+        //         | ((fee_bytes[30] as u32) << 8)
+        //         | (fee_bytes[31] as u32);
+        //     // data: [tickSpacing(int24)|poolAddress]
+        //     let data_slice: &[u8] = log.data().data.as_ref();
+        //     if data_slice.len() < 64 {
+        //         continue;
+        //     }
+        //     let pool_addr = Address::from_slice(&data_slice[44..64]);
+        //     let tok0 = match self.fetch_or_load_token(token0).await {
+        //         Ok(token) => token,
+        //         Err(e) => {
+        //             tracing::error!("Failed to fetch token {}: {}", token0, e);
+        //             continue;
+        //         }
+        //     };
+        //     let tok1 = match self.fetch_or_load_token(token1).await {
+        //         Ok(token) => token,
+        //         Err(e) => {
+        //             tracing::error!("Failed to fetch token {}: {}", token1, e);
+        //             continue;
+        //         }
+        //     };
+        //     let block_number: u64 = log.block_number.unwrap_or(0);
+        //     let pool = Pool {
+        //         address: pool_addr,
+        //         dex: self.name().into(),
+        //         chain_id: self.chain_id(),
+        //         tokens: vec![tok0, tok1],
+        //         creation_block: block_number,
+        //         creation_timestamp: Utc::now(),
+        //         last_updated_block: block_number,
+        //         last_updated_timestamp: Utc::now(),
+        //         fee: fee as u64,
+        //     };
+        //     let pool_address = pool.address;
+        //     if let Err(e) = save_pool_async(self.storage.clone(), pool.clone()).await {
+        //         tracing::error!("Failed to save pool {}: {}", pool_address, e);
+        //         continue;
+        //     };
 
-            pools.push(pool);
-            info!("Pool {}: token0={}, token1={}, fee={}", pool_address, token0, token1, fee);
-            pools_count += 1;
-        }
-        Ok(pools)
+        //     pools.push(pool);
+        //     info!("Pool {}: token0={}, token1={}, fee={}", pool_address, token0, token1, fee);
+        //     pools_count += 1;
+        // }
+        // Ok(pools)
     }
 
     async fn get_liquidity_distribution(

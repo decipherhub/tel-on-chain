@@ -190,46 +190,46 @@ impl Indexer {
 
         // Fetch all pools from each DEX
         for (dex_name, dex) in &self.dexes {
-            if dex_name == "uniswap_v2" {
-                info!("Fetching pools for DEX: {}", dex_name);
+            // if dex_name == "uniswap_v2" {
+            //     info!("Fetching pools for DEX: {}", dex_name);
 
-                for pool_address in V2_POOLS{
-                    let pool_address = Address::from_str(pool_address)
-                                            .map_err(|_| Error::InvalidAddress(pool_address.to_string()))?;
-                    match dex.get_pool(pool_address).await {
-                        Ok(pool) => {
-                            match self.process_pool(&pool).await {
-                                Ok(_) => debug!("Processed pool {} on {}", pool.address, pool.dex),
-                                Err(e) => warn!(
-                                    "Failed to process pool {} on {}: {}",
-                                    pool.address, pool.dex, e
-                                ),
-                            }
-                        }
-                        Err(e) => {
-                            warn!("Failed to fetch pools for {}: {}", dex_name, e);
-                        }
-                    }
-                }
-                
-            }
-            // match dex.get_all_pools().await {
-            //     Ok(pools) => {
-            //         info!("Found {} pools for {}", pools.len(), dex_name);
-            //         for pool in pools {
-            //             match self.process_pool(&pool).await {
-            //                 Ok(_) => debug!("Processed pool {} on {}", pool.address, pool.dex),
-            //                 Err(e) => warn!(
-            //                     "Failed to process pool {} on {}: {}",
-            //                     pool.address, pool.dex, e
-            //                 ),
+            //     for pool_address in V2_POOLS{
+            //         let pool_address = Address::from_str(pool_address)
+            //                                 .map_err(|_| Error::InvalidAddress(pool_address.to_string()))?;
+            //         match dex.get_pool(pool_address).await {
+            //             Ok(pool) => {
+            //                 match self.process_pool(&pool).await {
+            //                     Ok(_) => debug!("Processed pool {} on {}", pool.address, pool.dex),
+            //                     Err(e) => warn!(
+            //                         "Failed to process pool {} on {}: {}",
+            //                         pool.address, pool.dex, e
+            //                     ),
+            //                 }
+            //             }
+            //             Err(e) => {
+            //                 warn!("Failed to fetch pools for {}: {}", dex_name, e);
             //             }
             //         }
             //     }
-            //     Err(e) => {
-            //         warn!("Failed to fetch pools for {}: {}", dex_name, e);
-            //     }
+                
             // }
+            match dex.get_all_pools().await {
+                Ok(pools) => {
+                    info!("Found {} pools for {}", pools.len(), dex_name);
+                    for pool in pools {
+                        match self.process_pool(&pool).await {
+                            Ok(_) => debug!("Processed pool {} on {}", pool.address, pool.dex),
+                            Err(e) => warn!(
+                                "Failed to process pool {} on {}: {}",
+                                pool.address, pool.dex, e
+                            ),
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to fetch pools for {}: {}", dex_name, e);
+                }
+            }
         }
 
         Ok(())

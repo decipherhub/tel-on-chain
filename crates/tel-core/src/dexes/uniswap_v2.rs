@@ -234,6 +234,72 @@ impl DexProtocol for UniswapV2 {
         Ok(pool)
     }
 
+    async fn get_all_pools_test(&self) -> Result<Vec<Pool>, Error> {
+        // This is only used for test mode in the indexer
+        let pool_addresses = [
+            "0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc", //USDC/ETH
+            "0xBb2b8038a1640196FbE3e38816F3e67Cba72D940", //WBTC/ETH
+            "0x0d4a11d5EEaaC28EC3F61d100daF4d40471f1852", //ETH/USDT
+            "0xA478c2975Ab1Ea89e8196811F51A7B7Ade33eB11", //DAI/ETH
+            "0xd3d2E2692501A5c9Ca623199D38826e513033a17", //UNI/ETH
+            "0xd3d2E2692501A5c9Ca623199D38826e513033a17", //DAI/USDC
+            "0xebfb684dd2b01e698ca6c14f10e4f289934a54d6", //UNI/USDC
+            "0x5ac13261c181a9c3938bfe1b649e65d10f98566b", //UNI/USDT
+            "0xa43fe16908251ee70ef74718545e4fe6c5ccec9f", //PEPE/WETH
+        ];
+        let mut pools = Vec::new();
+        for addr_str in pool_addresses.iter() {
+            let addr_str = addr_str.trim();
+            if addr_str.is_empty() {
+                continue;
+            }
+            let pool_addr = match Address::from_str(addr_str) {
+                Ok(a) => a,
+                Err(_) => continue,
+            };
+            match self.get_pool(pool_addr).await {
+                Ok(pool) => {
+                    let _ = save_pool_async(self.storage.clone(), pool.clone()).await;
+                    pools.push(pool)
+                }
+                Err(_) => {
+                    let provider = self.provider.provider();
+                    let pool_contract = IUniswapV2Pair::new(pool_addr, provider.clone());
+                    let token0_addr = match pool_contract.token0().call().await {
+                        Ok(a) => a,
+                        Err(_) => continue,
+                    };
+                    let token1_addr = match pool_contract.token1().call().await {
+                        Ok(a) => a,
+                        Err(_) => continue,
+                    };
+                    let tok0 = match self.fetch_or_load_token(token0_addr).await {
+                        Ok(t) => t,
+                        Err(_) => continue,
+                    };
+                    let tok1 = match self.fetch_or_load_token(token1_addr).await {
+                        Ok(t) => t,
+                        Err(_) => continue,
+                    };
+                    let pool = Pool {
+                        address: pool_addr,
+                        dex: self.name().into(),
+                        chain_id: self.chain_id(),
+                        tokens: vec![tok0, tok1],
+                        creation_block: 0,
+                        creation_timestamp: Utc::now(),
+                        last_updated_block: 0,
+                        last_updated_timestamp: Utc::now(),
+                        fee: 3000, // 0.3% = 3000 (UniswapV2 standard)
+                    };
+                    let _ = save_pool_async(self.storage.clone(), pool.clone()).await;
+                    pools.push(pool);
+                }
+            }
+        }
+        Ok(pools)
+    }
+
     /// Retrieves up to 10 Uniswap V2 pools from the factory contract and saves them to storage.
     ///
     /// Queries the Uniswap V2 factory contract for the total number of pairs, fetches up to 10 pool addresses and their associated token addresses, constructs pool objects with token stubs, saves each pool asynchronously to storage, and returns the list of pools.
@@ -251,6 +317,9 @@ impl DexProtocol for UniswapV2 {
     /// assert!(!pools.is_empty());
     /// ```
     async fn get_all_pools(&self) -> Result<Vec<Pool>, Error> {
+        let pools = self.get_all_pools_test().await?;
+        return Ok(pools);
+
         // 1. Alloy Provider (RootProvider<Ethereum>)
         let inner = self.provider.provider();
 
