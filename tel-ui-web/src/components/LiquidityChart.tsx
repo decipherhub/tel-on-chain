@@ -133,7 +133,7 @@ export function LiquidityChart({ data, currentPrice, token0Symbol, token1Symbol,
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-xl font-semibold text-gray-900 mb-2">
-              Liquidity Distribution: {token0Symbol}/{token1Symbol}
+              Liquidity Distribution
             </h2>
             <p className="text-sm text-gray-600">
               Current Price: {formatPrice(currentPrice, token1Symbol)} per {token0Symbol}
