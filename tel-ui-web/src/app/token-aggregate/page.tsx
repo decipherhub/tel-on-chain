@@ -55,6 +55,7 @@ export default function TokenAggregatePage() {
     { name: 'LINK', address: '0x514910771AF9Ca656af840dff83E8264EcF986CA' },
     { name: 'UNI', address: '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984' },
     { name: 'PEPE', address: '0x6982508145454ce325ddbe47a25d4ec3d2311933' },
+    { name: 'WBTC', address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599' },
   ];
 
   return (
