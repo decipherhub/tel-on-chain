@@ -51,27 +51,26 @@ export const SUPPORTED_DEXES: DexConfig[] = [
   },
 ];
 
-export const POPULAR_TOKENS: Record<number, Array<{ address: string; symbol: string; name: string }>> = {
+export const POPULAR_POOLS: Record<number, Array<{
+  token0: { address: string; symbol: string };
+  token1: { address: string; symbol: string };
+  name: string;
+}>> = {
   1: [ // Ethereum
     {
-      address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
-      symbol: 'WETH',
-      name: 'Wrapped Ether',
+      token0: { address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599', symbol: 'WBTC' },
+      token1: { address: '0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf', symbol: 'cbBTC' },
+      name: 'WBTC/cbBTC',
     },
     {
-      address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
-      symbol: 'USDC',
-      name: 'USD Coin',
+      token0: { address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', symbol: 'WETH' },
+      token1: { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', symbol: 'USDC' },
+      name: 'WETH/USDC',
     },
     {
-      address: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
-      symbol: 'USDT',
-      name: 'Tether USD',
-    },
-    {
-      address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599',
-      symbol: 'WBTC',
-      name: 'Wrapped Bitcoin',
+      token0: { address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', symbol: 'WETH' },
+      token1: { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', symbol: 'USDT' },
+      name: 'WETH/USDT',
     },
   ],
 }; 
