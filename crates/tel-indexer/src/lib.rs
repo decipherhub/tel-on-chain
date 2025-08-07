@@ -22,7 +22,7 @@ pub struct Indexer {
 }
 
 // Only these pools are indexed in light mode!
-pub const LIGHT_MODE_POOLS: [&str; 35] = [
+pub const LIGHT_MODE_POOLS: [&str; 36] = [
     "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
     "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640",
     "0xCBCdF9626bC03E24f779434178A73a0B4bad62eD",
@@ -58,9 +58,10 @@ pub const LIGHT_MODE_POOLS: [&str; 35] = [
     "0xd3d2E2692501A5c9Ca623199D38826e513033a17", //DAI/USDC
     "0xebfb684dd2b01e698ca6c14f10e4f289934a54d6", //UNI/USDC
     "0x5ac13261c181a9c3938bfe1b649e65d10f98566b", //UNI/USDT
+    "0x004375dff511095cc5a197a54140a24efef3a416", //WBTC/USDC
 ];
 
-pub const V2_POOLS: [&str; 9] = [
+pub const V2_POOLS: [&str; 10] = [
     "0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc", //USDC/ETH
     "0xBb2b8038a1640196FbE3e38816F3e67Cba72D940", //WBTC/ETH
     "0x0d4a11d5EEaaC28EC3F61d100daF4d40471f1852", //ETH/USDT
@@ -70,6 +71,7 @@ pub const V2_POOLS: [&str; 9] = [
     "0xebfb684dd2b01e698ca6c14f10e4f289934a54d6", //UNI/USDC
     "0x5ac13261c181a9c3938bfe1b649e65d10f98566b", //UNI/USDT
     "0xA43fe16908251ee70EF74718545e4FE6C5cCEc9f", //PEPE/WETH
+    "0x004375dff511095cc5a197a54140a24efef3a416", //WBTC/USDC
 ];
 
 impl Indexer {
@@ -190,46 +192,46 @@ impl Indexer {
 
         // Fetch all pools from each DEX
         for (dex_name, dex) in &self.dexes {
-            // if dex_name == "uniswap_v2" {
-            //     info!("Fetching pools for DEX: {}", dex_name);
+            if dex_name == "uniswap_v2" {
+                info!("Fetching pools for DEX: {}", dex_name);
 
-            //     for pool_address in V2_POOLS{
-            //         let pool_address = Address::from_str(pool_address)
-            //                                 .map_err(|_| Error::InvalidAddress(pool_address.to_string()))?;
-            //         match dex.get_pool(pool_address).await {
-            //             Ok(pool) => {
-            //                 match self.process_pool(&pool).await {
-            //                     Ok(_) => debug!("Processed pool {} on {}", pool.address, pool.dex),
-            //                     Err(e) => warn!(
-            //                         "Failed to process pool {} on {}: {}",
-            //                         pool.address, pool.dex, e
-            //                     ),
-            //                 }
-            //             }
-            //             Err(e) => {
-            //                 warn!("Failed to fetch pools for {}: {}", dex_name, e);
-            //             }
-            //         }
-            //     }
-                
-            // }
-            match dex.get_all_pools().await {
-                Ok(pools) => {
-                    info!("Found {} pools for {}", pools.len(), dex_name);
-                    for pool in pools {
-                        match self.process_pool(&pool).await {
-                            Ok(_) => debug!("Processed pool {} on {}", pool.address, pool.dex),
-                            Err(e) => warn!(
-                                "Failed to process pool {} on {}: {}",
-                                pool.address, pool.dex, e
-                            ),
+                for pool_address in V2_POOLS{
+                    let pool_address = Address::from_str(pool_address)
+                                            .map_err(|_| Error::InvalidAddress(pool_address.to_string()))?;
+                    match dex.get_pool(pool_address).await {
+                        Ok(pool) => {
+                            match self.process_pool(&pool).await {
+                                Ok(_) => debug!("Processed pool {} on {}", pool.address, pool.dex),
+                                Err(e) => warn!(
+                                    "Failed to process pool {} on {}: {}",
+                                    pool.address, pool.dex, e
+                                ),
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Failed to fetch pools for {}: {}", dex_name, e);
                         }
                     }
                 }
-                Err(e) => {
-                    warn!("Failed to fetch pools for {}: {}", dex_name, e);
-                }
+                
             }
+            // match dex.get_all_pools().await {
+            //     Ok(pools) => {
+            //         info!("Found {} pools for {}", pools.len(), dex_name);
+            //         for pool in pools {
+            //             match self.process_pool(&pool).await {
+            //                 Ok(_) => debug!("Processed pool {} on {}", pool.address, pool.dex),
+            //                 Err(e) => warn!(
+            //                     "Failed to process pool {} on {}: {}",
+            //                     pool.address, pool.dex, e
+            //                 ),
+            //             }
+            //         }
+            //     }
+            //     Err(e) => {
+            //         warn!("Failed to fetch pools for {}: {}", dex_name, e);
+            //     }
+            // }
         }
 
         Ok(())

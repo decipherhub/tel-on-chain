@@ -905,17 +905,21 @@ pub async fn aggregate_liquidity_token1(
         .ok_or(Error::InvalidAddress(token1.to_string()))?;
     let usdc_address = Address::from_str(USDC_TOKEN).unwrap();
     
-    let token_constants = [WETH_TOKEN, WBTC_TOKEN, USDT_TOKEN, DAI_TOKEN];
+    let token_constants = [WETH_TOKEN, WBTC_TOKEN, USDT_TOKEN, DAI_TOKEN, USDC_TOKEN];
     let mut token_prices = Vec::new();
     
     for &token_str in &token_constants {
-        let price = get_current_price(
-            storage.clone(), 
-            Address::from_str(token_str).unwrap(), 
-            usdc_address, 
-            dex_for_price_reference, 
-            chain_id
-        ).await?;
+        let mut price = 1.0;
+        if token_str != USDT_TOKEN && token_str != DAI_TOKEN && token_str != USDC_TOKEN {
+            price = get_current_price(
+                storage.clone(), 
+                Address::from_str(token_str).unwrap(), 
+                usdc_address, 
+                dex_for_price_reference, 
+                chain_id
+            ).await?;
+        }
+
         token_prices.push((Address::from_str(token_str).unwrap(), price));
     }
     
@@ -954,31 +958,38 @@ pub async fn aggregate_liquidity_token1(
     
     for &token_addr in &paired_token_addresses {
         // TODO: conduct this for all DEXes
-        let mut distribution = match storage.get_liquidity_distribution(
+        let distribution = match storage.get_liquidity_distribution(
             token1, Address::from_str(token_addr).unwrap(), dex_for_price_reference, chain_id
         )? {
             Some(dist) => dist,
             None => dummy_dist.clone(),
         };
-        
         if token_addr == USDC_TOKEN {
-            usdc_pair_distribution = distribution;
-        } else {
-            distributions.push(distribution);
-        }        
+            usdc_pair_distribution = distribution.clone();
+        } 
+        distributions.push(distribution);        
     }
     let mut ret = usdc_pair_distribution.price_levels.clone();
     
     if let Some((_, weth_price)) = token_prices.iter().find(|(addr, _)| *addr == Address::from_str(WETH_TOKEN).unwrap()) {
-        info!("weth_price: {}", weth_price);
+        info!("{} weth_price: {}", dex_for_price_reference ,weth_price);
+    }
+    if let Some((_, wbtc_price)) = token_prices.iter().find(|(addr, _)| *addr == Address::from_str(WBTC_TOKEN).unwrap()) {
+        info!("wbtc_price: {}", wbtc_price);
+    }
+    if let Some((_, usdt_price)) = token_prices.iter().find(|(addr, _)| *addr == Address::from_str(USDT_TOKEN).unwrap()) {
+        info!("usdt_price: {}", usdt_price);
+    }
+    if let Some((_, dai_price)) = token_prices.iter().find(|(addr, _)| *addr == Address::from_str(DAI_TOKEN).unwrap()) {
+        info!("dai_price: {}", dai_price);
     }
     
     for dist in distributions {
         for (token_address, price) in token_prices.iter() {
             if dist.token1.address == *token_address {
                 for mut price_level in dist.price_levels {
-                    price_level.lower_price = price_level.lower_price / price;
-                    price_level.upper_price = price_level.upper_price / price;
+                    price_level.lower_price = price_level.lower_price * price;
+                    price_level.upper_price = price_level.upper_price * price;
                     price_level.token1_liquidity = price_level.token1_liquidity * price;
                     ret.push(price_level);
                 }
