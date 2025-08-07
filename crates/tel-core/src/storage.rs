@@ -991,6 +991,7 @@ pub async fn aggregate_liquidity_token1(
                     price_level.lower_price = price_level.lower_price * price;
                     price_level.upper_price = price_level.upper_price * price;
                     price_level.token1_liquidity = price_level.token1_liquidity * price;
+                    info!("{} {} {:?} 0:{} 1:{}", dex_for_price_reference, dist.token1.symbol,price_level.side, price_level.token0_liquidity, price_level.token1_liquidity);
                     ret.push(price_level);
                 }
                 break;
