@@ -1,5 +1,5 @@
 use crate::error::Error;
-use crate::models::{LiquidityDistribution, Pool, PriceLiquidity, Token};
+use crate::models::{LiquidityDistribution, Pool, PriceLiquidity, Side, Token};
 use crate::utils::{bucket_price_levels, merge_two_liquidity_distributions};
 use crate::Result;
 use alloy_primitives::Address;
@@ -991,6 +991,15 @@ pub async fn aggregate_liquidity_token1(
                     price_level.lower_price = price_level.lower_price * price;
                     price_level.upper_price = price_level.upper_price * price;
                     price_level.token1_liquidity = price_level.token1_liquidity * price;
+                    price_level.token0_liquidity = price_level.token0_liquidity * dist.current_price;
+                    if price_level.token0_liquidity < 0.0 || price_level.token1_liquidity <0.0 {
+                        continue;
+                    }
+                    if price_level.side == Side::Sell{
+                        price_level.token1_liquidity += price_level.token0_liquidity;
+                        price_level.token0_liquidity = 0.0;
+                    }
+                    
                     info!("{} {} {:?} 0:{} 1:{}", dex_for_price_reference, dist.token1.symbol,price_level.side, price_level.token0_liquidity, price_level.token1_liquidity);
                     ret.push(price_level);
                 }
@@ -1012,6 +1021,9 @@ pub async fn aggregate_liquidity_token1(
 
     let mut aggregate_pool = usdc_pair_distribution.clone();
     aggregate_pool.price_levels = bucket_price_levels(ret, aggregate_pool.current_price, 0.001);
+    for price in aggregate_pool.clone().price_levels{
+        info!("bucket {:?} 0:{} 1:{}",price.side,price.token0_liquidity,price.token1_liquidity);
+    }
     let token1_name = Token1.name.clone();
     let token1_name = token1_name + "'s Aggregate Liquidity";
     aggregate_pool.token0 = Token {
