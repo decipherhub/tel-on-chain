@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
-import { SUPPORTED_CHAINS, SUPPORTED_DEXES, POPULAR_TOKENS } from '@/lib/constants';
+import { SUPPORTED_CHAINS, SUPPORTED_DEXES, POPULAR_POOLS } from '@/lib/constants';
 import { isValidAddress } from '@/lib/utils';
 import { ChevronDown, Search } from 'lucide-react';
 
@@ -26,7 +26,7 @@ export function TokenSelector({ onTokensChange, onFiltersChange }: TokenSelector
   
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormData>({
     defaultValues: {
-      token0: '0x6982508145454Ce325dDbE47a25d4ec3d2311933', // WETH
+      token0: '0xe8f7c89c5efa061e340f2d2f206ec78fd8f7e124', // Custom Token
       token1: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', // USDC
       chainId: 1,
       dex: '',
@@ -34,7 +34,7 @@ export function TokenSelector({ onTokensChange, onFiltersChange }: TokenSelector
   });
 
   const chainId = watch('chainId');
-  const popularTokens = POPULAR_TOKENS[chainId] || [];
+  const popularPools = POPULAR_POOLS[chainId] || [];
 
   const onSubmit = (data: FormData) => {
     if (!isValidAddress(data.token0) || !isValidAddress(data.token1)) {
@@ -48,8 +48,9 @@ export function TokenSelector({ onTokensChange, onFiltersChange }: TokenSelector
     });
   };
 
-  const handlePopularTokenSelect = (address: string, isToken0: boolean) => {
-    setValue(isToken0 ? 'token0' : 'token1', address);
+  const handlePopularPoolSelect = (pool: typeof popularPools[0]) => {
+    setValue('token0', pool.token0.address);
+    setValue('token1', pool.token1.address);
     setShowPopular(false);
   };
 
@@ -76,33 +77,24 @@ export function TokenSelector({ onTokensChange, onFiltersChange }: TokenSelector
           onClick={() => setShowPopular(!showPopular)}
           className="text-blue-600"
         >
-          Popular Tokens <ChevronDown className="ml-1 h-4 w-4" />
+          Popular Pools <ChevronDown className="ml-1 h-4 w-4" />
         </Button>
       </div>
 
       {showPopular && (
         <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-          <h3 className="text-sm font-medium text-gray-700 mb-3">Popular Tokens</h3>
-          <div className="grid grid-cols-2 gap-2">
-            {popularTokens.map((token) => (
-              <div key={token.address} className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePopularTokenSelect(token.address, true)}
-                  className="flex-1 justify-start text-xs"
-                >
-                  {token.symbol}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePopularTokenSelect(token.address, false)}
-                  className="flex-1 justify-start text-xs"
-                >
-                  {token.symbol}
-                </Button>
-              </div>
+          <h3 className="text-sm font-medium text-gray-700 mb-3">Popular Pools</h3>
+          <div className="grid grid-cols-1 gap-2">
+            {popularPools.map((pool, index) => (
+              <Button
+                key={index}
+                variant="outline"
+                size="sm"
+                onClick={() => handlePopularPoolSelect(pool)}
+                className="justify-start text-xs"
+              >
+                {pool.name}
+              </Button>
             ))}
           </div>
         </div>
@@ -112,7 +104,7 @@ export function TokenSelector({ onTokensChange, onFiltersChange }: TokenSelector
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input
             label="Token 0 Address"
-            placeholder="0x6982508145454Ce325dDbE47a25d4ec3d2311933"
+            placeholder="0xe8f7c89c5efa061e340f2d2f206ec78fd8f7e124"
             {...register('token0', {
               required: 'Token 0 address is required',
               validate: (value) => isValidAddress(value) || 'Invalid address format',

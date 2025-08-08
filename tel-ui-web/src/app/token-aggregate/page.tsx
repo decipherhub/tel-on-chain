@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/Input';
 import { StatsSummary } from '@/components/StatsSummary';
 import { LiquidityChart } from '@/components/LiquidityChart';
 import { useTokenAggregateData } from '@/hooks/useTokenAggregateData';
-import { formatNumber } from '@/lib/utils';
 
 export default function TokenAggregatePage() {
   const router = useRouter();
@@ -56,6 +55,7 @@ export default function TokenAggregatePage() {
     { name: 'LINK', address: '0x514910771AF9Ca656af840dff83E8264EcF986CA' },
     { name: 'UNI', address: '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984' },
     { name: 'PEPE', address: '0x6982508145454ce325ddbe47a25d4ec3d2311933' },
+    { name: 'WBTC', address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599' },
   ];
 
   return (
@@ -90,11 +90,8 @@ export default function TokenAggregatePage() {
         {/* Search Section */}
         <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            Analyze Token Liquidity Across All Major Pairs
+            🔍 Analyze Token Liquidity (Across Major Pairs)
           </h2>
-          <p className="text-gray-600 mb-6">
-            Enter a token address to see aggregated liquidity data across WETH, USDC, USDT, DAI, and WBTC pairs.
-          </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="flex gap-4">
@@ -209,20 +206,13 @@ export default function TokenAggregatePage() {
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-xl font-bold text-gray-900">
-                    {data.token0.symbol} Aggregate Liquidity Analysis
+                    <span className="text-blue-600">{data.token0.symbol}</span>
                   </h3>
-                  <p className="text-sm text-gray-500 mt-1">
-                    {data.token0.name} • Across all major trading pairs
-                  </p>
                   <p className="text-xs text-gray-400 mt-1 font-mono">
-                    Token: {data.token0.address}
+                    Token Address: {data.token0.address}
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm text-gray-500">Current Price</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    ${data.current_price.toFixed(4)}
-                  </p>
                   <p className="text-xs text-gray-500">
                     Updated: {new Date(data.timestamp).toLocaleString()}
                   </p>
@@ -232,38 +222,16 @@ export default function TokenAggregatePage() {
 
             {/* Aggregate Stats */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {/* Liquidity Overview */}
-              <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                  Liquidity Overview
-                </h3>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Total Price Levels</span>
-                    <span className="font-semibold">{data.price_levels.length}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Buy Levels</span>
-                    <span className="font-semibold text-green-600">
-                      {data.price_levels.filter(level => level.side === 'Buy').length}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Sell Levels</span>
-                    <span className="font-semibold text-red-600">
-                      {data.price_levels.filter(level => level.side === 'Sell').length}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Total Liquidity</span>
-                    <span className="font-bold">
-                      {formatNumber(
-                        data.price_levels.reduce((sum, level) => sum + level.token1_liquidity, 0),
-                        { compact: true }
-                      )} {data.token1.symbol}
-                    </span>
-                  </div>
-                </div>
+              {/* Liquidity Chart */}
+              <div>
+                <LiquidityChart
+                  data={chartData}
+                  currentPrice={data.current_price}
+                  token0Symbol={data.token0.symbol}
+                  token1Symbol={data.token1.symbol}
+                  priceType={priceType}
+                  onPriceTypeChange={setPriceType}
+                />
               </div>
 
               {/* Stats Summary Component */}
@@ -276,18 +244,6 @@ export default function TokenAggregatePage() {
                 mode="aggregate"
                 tokenAddress={submittedToken}
                 chainId={chainId}
-              />
-            </div>
-
-            {/* Liquidity Chart */}
-            <div className="mt-8">
-              <LiquidityChart
-                data={chartData}
-                currentPrice={data.current_price}
-                token0Symbol={data.token0.symbol}
-                token1Symbol={data.token1.symbol}
-                priceType={priceType}
-                onPriceTypeChange={setPriceType}
               />
             </div>
           </div>

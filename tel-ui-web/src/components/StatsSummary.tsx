@@ -84,11 +84,12 @@ export function StatsSummary({
 
   return (
     <div className="space-y-6">
-      {/* Overview Stats */}
+      {/* Market Overview & Liquidity Breakdown */}
       <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Market Overview</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Overview</h3>
         
-        <div className="grid grid-cols-2 gap-4">
+        {/* Price and Total Liquidity */}
+        <div className="grid grid-cols-2 gap-4 mb-6">
           <div className="text-center">
             <div className="flex items-center justify-center mb-2">
               <DollarSign className="h-5 w-5 text-blue-600 mr-1" />
@@ -113,12 +114,8 @@ export function StatsSummary({
             </p>
           </div>
         </div>
-      </div>
 
-      {/* Liquidity Breakdown */}
-      <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Liquidity Breakdown</h3>
-        
+        {/* Buy/Sell Liquidity Breakdown */}
         <div className="space-y-4">
           <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
             <div className="flex items-center">
