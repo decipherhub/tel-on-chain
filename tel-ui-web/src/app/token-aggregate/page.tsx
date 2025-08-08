@@ -213,10 +213,6 @@ export default function TokenAggregatePage() {
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm text-gray-500">Current Price</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    ${data.current_price.toFixed(4)}
-                  </p>
                   <p className="text-xs text-gray-500">
                     Updated: {new Date(data.timestamp).toLocaleString()}
                   </p>
