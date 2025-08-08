@@ -1,5 +1,5 @@
 use crate::error::Error;
-use crate::models::{LiquidityDistribution, Pool, PriceLiquidity, Token};
+use crate::models::{LiquidityDistribution, Pool, PriceLiquidity, Side, Token};
 use crate::utils::{bucket_price_levels, merge_two_liquidity_distributions};
 use crate::Result;
 use alloy_primitives::Address;
@@ -991,6 +991,16 @@ pub async fn aggregate_liquidity_token1(
                     price_level.lower_price = price_level.lower_price * price;
                     price_level.upper_price = price_level.upper_price * price;
                     price_level.token1_liquidity = price_level.token1_liquidity * price;
+                    price_level.token0_liquidity = price_level.token0_liquidity * price * dist.current_price;
+                    if price_level.token0_liquidity < 0.0 || price_level.token1_liquidity <0.0 {
+                        continue;
+                    }
+                    if price_level.side == Side::Sell{
+                        price_level.token1_liquidity += price_level.token0_liquidity;
+                        price_level.token0_liquidity = 0.0;
+                    }
+                    
+                    // info!("{} {} {:?} 0:{} 1:{}", dex_for_price_reference, dist.token1.symbol,price_level.side, price_level.token0_liquidity, price_level.token1_liquidity);
                     ret.push(price_level);
                 }
                 break;
@@ -998,7 +1008,7 @@ pub async fn aggregate_liquidity_token1(
         }
     }
     // bucket price levels, sort price levels by lower price
-    let bucket_size = 0.001;
+    let bucket_size = 0.0001;
     ret.sort_by(|a, b| a.lower_price.partial_cmp(&b.lower_price).unwrap());
     let mut bucketed_ret = Vec::new();
     for price_level in ret {
@@ -1010,7 +1020,10 @@ pub async fn aggregate_liquidity_token1(
     ret = bucketed_ret;
 
     let mut aggregate_pool = usdc_pair_distribution.clone();
-    aggregate_pool.price_levels = bucket_price_levels(ret, aggregate_pool.current_price, 0.001);
+    aggregate_pool.price_levels = bucket_price_levels(ret, aggregate_pool.current_price, 0.01);
+    // for price in aggregate_pool.clone().price_levels{
+    //     info!("bucket {:?} {}~{} 0:{} 1:{}",price.side,price.lower_price,price.upper_price,price.token0_liquidity,price.token1_liquidity);
+    // }
     let token1_name = Token1.name.clone();
     let token1_name = token1_name + "'s Aggregate Liquidity";
     aggregate_pool.token0 = Token {
