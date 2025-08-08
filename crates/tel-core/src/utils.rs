@@ -88,8 +88,8 @@ pub fn merge_two_liquidity_distributions(
     all_price_levels.extend(dist2.price_levels.clone());
 
     // 3. Calculate the weighted average current_price
-    let total_liquidity1: f64 = dist1.price_levels.iter().map(|p| p.token0_liquidity + p.token1_liquidity).sum();
-    let total_liquidity2: f64 = dist2.price_levels.iter().map(|p| p.token0_liquidity + p.token1_liquidity).sum();
+    let total_liquidity1: f64 = dist1.price_levels.iter().map(|p| p.token0_liquidity + p.token1_liquidity/dist1.current_price).sum();
+    let total_liquidity2: f64 = dist2.price_levels.iter().map(|p| p.token0_liquidity + p.token1_liquidity/dist2.current_price).sum();
     let total_liquidity = total_liquidity1 + total_liquidity2;
 
     let merged_current_price = if total_liquidity > 0.0 {

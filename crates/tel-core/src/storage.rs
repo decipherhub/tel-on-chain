@@ -1022,7 +1022,7 @@ pub async fn aggregate_liquidity_token1(
     let mut aggregate_pool = usdc_pair_distribution.clone();
     aggregate_pool.price_levels = bucket_price_levels(ret, aggregate_pool.current_price, 0.001);
     for price in aggregate_pool.clone().price_levels{
-        info!("bucket {:?} 0:{} 1:{}",price.side,price.token0_liquidity,price.token1_liquidity);
+        info!("bucket {:?} {}~{} 0:{} 1:{}",price.side,price.lower_price,price.upper_price,price.token0_liquidity,price.token1_liquidity);
     }
     let token1_name = Token1.name.clone();
     let token1_name = token1_name + "'s Aggregate Liquidity";
