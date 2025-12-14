@@ -33,44 +33,33 @@ interface LiquidityChartProps {
   onPriceTypeChange: (type: 'wall' | 'current') => void;
 }
 
-interface TooltipProps {
+const CustomTooltip = ({ active, payload, label }: {
   active?: boolean;
-  payload?: Array<{
-    payload: ChartDataPoint;
-  }>;
+  payload?: Array<{ payload: ChartDataPoint }>;
   label?: string;
-}
-
-const CustomTooltip = ({ active, payload, label }: TooltipProps) => {
+}) => {
   if (!active || !payload || !payload.length) return null;
 
   const data = payload[0].payload;
-  
+
   return (
-    <div className="bg-white p-4 border border-gray-200 rounded-lg shadow-lg">
-      <p className="font-semibold text-gray-900 mb-2">{label}</p>
-      
+    <div className="card p-3 shadow-lg">
+      <p className="font-medium text-[var(--foreground)] text-sm mb-2">{label}</p>
       {data.buyLiquidity > 0 && (
-        <div className="mb-2">
-          <p className="text-green-600 font-medium">
-            Buy Liquidity: {formatNumber(data.buyLiquidity, { compact: true })}
-          </p>
-        </div>
+        <p className="text-[var(--success)] text-sm">
+          Buy: {formatNumber(data.buyLiquidity, { compact: true })}
+        </p>
       )}
-      
       {data.sellLiquidity > 0 && (
-        <div className="mb-2">
-          <p className="text-red-600 font-medium">
-            Sell Liquidity: {formatNumber(data.sellLiquidity, { compact: true })}
-          </p>
-        </div>
+        <p className="text-[var(--danger)] text-sm">
+          Sell: {formatNumber(data.sellLiquidity, { compact: true })}
+        </p>
       )}
-      
       {Object.keys(data.dexSources).length > 0 && (
-        <div className="mt-3 pt-2 border-t border-gray-100">
-          <p className="text-sm font-medium text-gray-700 mb-1">DEX Sources:</p>
+        <div className="mt-2 pt-2 border-t border-[var(--border)]">
+          <p className="text-xs text-[var(--foreground-muted)] mb-1">DEX Sources:</p>
           {Object.entries(data.dexSources).map(([dex, amount]) => (
-            <p key={dex} className="text-xs text-gray-600">
+            <p key={dex} className="text-xs text-[var(--foreground-muted)]">
               {dex}: {formatNumber(amount as number, { compact: true })}
             </p>
           ))}
@@ -82,30 +71,27 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps) => {
 
 const CustomXAxisTick = ({ x, y, payload }: { x?: number; y?: number; payload?: { value: string } }) => {
   if (!payload?.value || x === undefined || y === undefined) return null;
-  
+
   const lines = payload.value.split('\n');
-  const percentage = lines[0];
-  const price = lines[1];
-  
+
   return (
     <g transform={`translate(${x},${y})`}>
-      <text x={0} y={0} dy={16} textAnchor="end" fontSize={12} transform="rotate(-45)">
-        <tspan fill="#374151" fontWeight="bold">{percentage}</tspan>
+      <text x={0} y={0} dy={16} textAnchor="end" fontSize={11} transform="rotate(-45)">
+        <tspan fill="var(--foreground)" fontWeight="500">{lines[0]}</tspan>
       </text>
-      <text x={0} y={0} dy={30} textAnchor="end" fontSize={11} transform="rotate(-45)">
-        <tspan fill="#6b7280">{price}</tspan>
+      <text x={0} y={0} dy={28} textAnchor="end" fontSize={10} transform="rotate(-45)">
+        <tspan fill="var(--foreground-muted)">{lines[1]}</tspan>
       </text>
     </g>
   );
 };
 
 export function LiquidityChart({ data, currentPrice, token0Symbol, token1Symbol, priceType, onPriceTypeChange }: LiquidityChartProps) {
-  const [scaleRange, setScaleRange] = useState(10); // Default 10% range
+  const [scaleRange, setScaleRange] = useState(10);
 
-  // Generate percentage intervals based on scale
   const processedData = useMemo(() => {
     if (!data || data.length === 0) return [];
-    
+
     return data.map((point) => {
       const percentageFromCurrent = ((point.price - currentPrice) / currentPrice) * 100;
       return {
@@ -114,13 +100,13 @@ export function LiquidityChart({ data, currentPrice, token0Symbol, token1Symbol,
         percentageLabel: `${percentageFromCurrent >= 0 ? '+' : ''}${percentageFromCurrent.toFixed(1)}%\n${formatPrice(point.price, token1Symbol)}`
       };
     }).filter(point => Math.abs(point.percentageFromCurrent) <= scaleRange)
-    .sort((a, b) => a.percentageFromCurrent - b.percentageFromCurrent);
+      .sort((a, b) => a.percentageFromCurrent - b.percentageFromCurrent);
   }, [data, currentPrice, scaleRange, token1Symbol]);
 
   if (!data || data.length === 0) {
     return (
-      <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
-        <div className="flex items-center justify-center h-64 text-gray-500">
+      <div className="card p-6">
+        <div className="flex items-center justify-center h-64 text-[var(--foreground-muted)]">
           No liquidity data available
         </div>
       </div>
@@ -128,83 +114,64 @@ export function LiquidityChart({ data, currentPrice, token0Symbol, token1Symbol,
   }
 
   return (
-    <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">
-              Liquidity Distribution
-            </h2>
-            <p className="text-sm text-gray-600">
-              Current Price: {formatPrice(currentPrice, token1Symbol)} per {token0Symbol}
-            </p>
-          </div>
-          
-          <div className="flex items-center space-x-6">
-            {/* Price Type Toggle */}
-            <div className="flex items-center space-x-3">
-              <label className="text-sm font-medium text-gray-700">
-                Sell Wall Price:
-              </label>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => onPriceTypeChange('wall')}
-                  className={`px-3 py-1 text-xs font-medium rounded ${
-                    priceType === 'wall'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                >
-                  Wall Price
-                </button>
-                <button
-                  onClick={() => onPriceTypeChange('current')}
-                  className={`px-3 py-1 text-xs font-medium rounded ${
-                    priceType === 'current'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                >
-                  Current Price
-                </button>
-              </div>
-            </div>
+    <div className="card p-6">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h2 className="text-lg font-semibold text-[var(--foreground)]">
+            Liquidity Distribution
+          </h2>
+          <p className="text-sm text-[var(--foreground-muted)] mt-1">
+            {formatPrice(currentPrice, token1Symbol)} per {token0Symbol}
+          </p>
+        </div>
 
-            {/* Scale Control Slider */}
-            <div className="flex items-center space-x-3">
-              <label htmlFor="scale-range" className="text-sm font-medium text-gray-700">
-                Scale:
-              </label>
-              <div className="flex items-center space-x-2">
-                <span className="text-xs text-gray-500">±{scaleRange}%</span>
-                <input
-                  id="scale-range"
-                  type="range"
-                  min="5"
-                  max="50"
-                  step="5"
-                  value={scaleRange}
-                  onChange={(e) => setScaleRange(Number(e.target.value))}
-                  className="w-20 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
-                />
-              </div>
-            </div>
+        <div className="flex items-center gap-4">
+          {/* Price Type Toggle */}
+          <div className="flex items-center gap-2 p-1 rounded-lg bg-[var(--surface)]">
+            <button
+              onClick={() => onPriceTypeChange('wall')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                priceType === 'wall'
+                  ? 'bg-[var(--accent)] text-white'
+                  : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
+              }`}
+            >
+              Wall Price
+            </button>
+            <button
+              onClick={() => onPriceTypeChange('current')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                priceType === 'current'
+                  ? 'bg-[var(--accent)] text-white'
+                  : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
+              }`}
+            >
+              Current
+            </button>
+          </div>
+
+          {/* Scale Slider */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-[var(--foreground-muted)]">±{scaleRange}%</span>
+            <input
+              type="range"
+              min="5"
+              max="50"
+              step="5"
+              value={scaleRange}
+              onChange={(e) => setScaleRange(Number(e.target.value))}
+              className="w-20"
+            />
           </div>
         </div>
       </div>
 
-      <div className="h-96">
+      {/* Chart */}
+      <div className="h-80">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart
-            data={processedData}
-            margin={{
-              top: 20,
-              right: 30,
-              left: 20,
-              bottom: 60,
-            }}
-          >
-            <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+          <BarChart data={processedData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
             <XAxis
               dataKey="percentageLabel"
               height={80}
@@ -214,38 +181,25 @@ export function LiquidityChart({ data, currentPrice, token0Symbol, token1Symbol,
             />
             <YAxis
               tickFormatter={(value) => formatNumber(value, { compact: true })}
-              fontSize={12}
+              fontSize={11}
+              stroke="var(--foreground-muted)"
             />
             <Tooltip content={<CustomTooltip />} />
-            <Legend />
-            
-            {/* Buy liquidity bars */}
-            <Bar
-              dataKey="buyLiquidity"
-              fill="#10b981"
-              name="Buy Liquidity"
-              radius={[4, 4, 0, 0]}
+            <Legend
+              wrapperStyle={{ fontSize: '12px', color: 'var(--foreground-muted)' }}
             />
-            
-            {/* Sell liquidity bars */}
-            <Bar
-              dataKey="sellLiquidity"
-              fill="#ef4444"
-              name="Sell Liquidity"
-              radius={[4, 4, 0, 0]}
-            />
-            
-            {/* Reference line for current price */}
+            <Bar dataKey="buyLiquidity" fill="var(--success)" name="Buy" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="sellLiquidity" fill="var(--danger)" name="Sell" radius={[4, 4, 0, 0]} />
             <ReferenceLine
               x="0.0%"
-              stroke="#8884d8"
+              stroke="var(--accent)"
               strokeDasharray="5 5"
               strokeWidth={2}
-              label={{ value: "Current Price", position: "top", fill: "#8884d8" }}
+              label={{ value: "Current", position: "top", fill: "var(--accent)", fontSize: 11 }}
             />
           </BarChart>
         </ResponsiveContainer>
       </div>
     </div>
   );
-} 
+}

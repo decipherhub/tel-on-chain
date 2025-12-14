@@ -12,87 +12,49 @@ interface PoolListProps {
   selectedPool?: Pool;
 }
 
+const DEX_NAMES: Record<string, string> = {
+  uniswap_v2: 'Uniswap V2',
+  uniswap_v3: 'Uniswap V3',
+  sushiswap: 'SushiSwap',
+};
+
 export function PoolList({ onPoolSelect, selectedPool }: PoolListProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDex, setSelectedDex] = useState<string>('all');
-  const [chainId] = useState(1); // Default to Ethereum mainnet
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 100;
 
-  // Use server-side pagination
-  const { 
-    pools, 
-    loading, 
-    error, 
-    refresh 
-  } = usePoolData({ 
-    chainId, 
+  const { pools, loading, error, refresh } = usePoolData({
+    chainId: 1,
     dex: selectedDex === 'all' ? undefined : selectedDex,
     page: currentPage,
     limit: itemsPerPage
   });
 
-  // Filter pools client-side for search functionality
-  const filteredPools = searchTerm 
-    ? pools.filter(pool => 
-        (pool.tokens && pool.tokens.some(token => 
-          token.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          token.name.toLowerCase().includes(searchTerm.toLowerCase())
-        )) || 
-        pool.address.toLowerCase().includes(searchTerm.toLowerCase())
-      )
+  const filteredPools = searchTerm
+    ? pools.filter(pool =>
+      pool.tokens?.some(token =>
+        token.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        token.name.toLowerCase().includes(searchTerm.toLowerCase())
+      ) || pool.address.toLowerCase().includes(searchTerm.toLowerCase())
+    )
     : pools;
 
   useEffect(() => {
-    // Reset to first page when DEX filter changes
     setCurrentPage(1);
   }, [selectedDex]);
 
   const formatTokenPair = (pool: Pool) => {
-    if (!pool.tokens || pool.tokens.length === 0) {
-      return 'Unknown';
-    }
-    if (pool.tokens.length >= 2) {
-      return `${pool.tokens[0].symbol}/${pool.tokens[1].symbol}`;
-    }
-    return pool.tokens[0]?.symbol || 'Unknown';
-  };
-
-  const formatFee = (fee: number) => {
-    return (fee / 10000).toFixed(2) + '%';
-  };
-
-  const formatAddress = (address: string) => {
-    return `${address.slice(0, 6)}...${address.slice(-4)}`;
-  };
-
-  const getDexDisplayName = (dex: string) => {
-    switch (dex) {
-      case 'uniswap_v2':
-        return 'Uniswap V2';
-      case 'uniswap_v3':
-        return 'Uniswap V3';
-      case 'sushiswap':
-        return 'SushiSwap';
-      default:
-        return dex;
-    }
-  };
-
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-  };
-
-  const handleDexChange = (dex: string) => {
-    setSelectedDex(dex);
+    if (!pool.tokens || pool.tokens.length < 2) return 'Unknown';
+    return `${pool.tokens[0].symbol}/${pool.tokens[1].symbol}`;
   };
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow p-6">
-        <div className="flex items-center justify-center py-8">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-600 mr-3" />
-          <span className="text-gray-600">Loading pools...</span>
+      <div className="card p-8">
+        <div className="flex items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-[var(--accent)] mr-3" />
+          <span className="text-[var(--foreground-muted)]">Loading pools...</span>
         </div>
       </div>
     );
@@ -100,49 +62,40 @@ export function PoolList({ onPoolSelect, selectedPool }: PoolListProps) {
 
   if (error) {
     return (
-      <div className="bg-white rounded-lg shadow p-6">
-        <div className="text-center py-8">
-          <div className="text-red-600 mb-4">Error loading pools</div>
-          <div className="text-gray-600 mb-4">{error}</div>
-          <Button onClick={refresh} variant="outline" size="sm">
-            Try Again
-          </Button>
-        </div>
+      <div className="card p-8 text-center">
+        <p className="text-[var(--danger)] mb-4">Error loading pools</p>
+        <Button onClick={refresh} variant="outline" size="sm">Try Again</Button>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-lg shadow">
-      <div className="p-6 border-b border-gray-200">
+    <div className="card">
+      {/* Header */}
+      <div className="p-5 border-b border-[var(--border)]">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">Available Pools</h2>
-          <div className="text-sm text-gray-500">
-            {filteredPools.length} pools
-            {searchTerm && filteredPools.length !== pools.length && (
-              <span className="ml-2">(filtered from {pools.length})</span>
-            )}
-          </div>
+          <h2 className="text-lg font-semibold text-[var(--foreground)]">Available Pools</h2>
+          <span className="text-sm text-[var(--foreground-muted)]">{filteredPools.length} pools</span>
         </div>
 
         {/* Search and Filter */}
-        <div className="flex flex-col sm:flex-row gap-4 mb-4">
+        <div className="flex gap-3">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--foreground-muted)]" />
             <input
               type="text"
-              placeholder="Search by token symbol, name, or address..."
+              placeholder="Search by symbol, name, or address..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full pl-10 pr-4 py-2 text-sm rounded-lg bg-[var(--surface)] border border-[var(--border)] text-[var(--foreground)] placeholder:text-[var(--foreground-muted)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
             />
           </div>
           <div className="relative">
-            <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--foreground-muted)]" />
             <select
               value={selectedDex}
-              onChange={(e) => handleDexChange(e.target.value)}
-              className="pl-10 pr-8 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+              onChange={(e) => setSelectedDex(e.target.value)}
+              className="pl-10 pr-8 py-2 text-sm rounded-lg bg-[var(--surface)] border border-[var(--border)] text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
             >
               <option value="all">All DEXes</option>
               <option value="uniswap_v2">Uniswap V2</option>
@@ -154,65 +107,56 @@ export function PoolList({ onPoolSelect, selectedPool }: PoolListProps) {
       </div>
 
       {/* Pool List */}
-      <div>
-        {filteredPools.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            No pools found matching your criteria
-          </div>
-        ) : (
-          <>
-            <div className="divide-y divide-gray-200">
-              {filteredPools.map((pool) => (
-                <div
-                  key={pool.address}
-                  onClick={() => onPoolSelect(pool)}
-                  className={`p-4 hover:bg-gray-50 cursor-pointer transition-colors ${
-                    selectedPool?.address === pool.address ? 'bg-blue-50 border-r-4 border-blue-500' : ''
+      {filteredPools.length === 0 ? (
+        <div className="p-8 text-center text-[var(--foreground-muted)]">
+          No pools found
+        </div>
+      ) : (
+        <>
+          <div className="divide-y divide-[var(--border)]">
+            {filteredPools.map((pool) => (
+              <div
+                key={pool.address}
+                onClick={() => onPoolSelect(pool)}
+                className={`p-4 cursor-pointer transition-all hover:bg-[var(--surface)] ${selectedPool?.address === pool.address
+                    ? 'bg-[var(--accent-subtle)] border-l-2 border-l-[var(--accent)]'
+                    : ''
                   }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-3">
-                        <div className="font-medium text-gray-900">
-                          {formatTokenPair(pool)}
-                        </div>
-                        <div className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
-                          {getDexDisplayName(pool.dex)}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          {formatFee(pool.fee)}
-                        </div>
-                      </div>
-                      <div className="text-sm text-gray-500 mt-1">
-                        {formatAddress(pool.address)}
-                      </div>
-                      {pool.tokens && pool.tokens.length >= 2 && (
-                        <div className="text-xs text-gray-400 mt-1">
-                          {pool.tokens[0].name} / {pool.tokens[1].name}
-                        </div>
-                      )}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3">
+                      <span className="font-medium text-[var(--foreground)]">
+                        {formatTokenPair(pool)}
+                      </span>
+                      <span className="px-2 py-0.5 text-xs rounded bg-[var(--surface)] text-[var(--foreground-muted)]">
+                        {DEX_NAMES[pool.dex] || pool.dex}
+                      </span>
+                      <span className="text-xs text-[var(--foreground-muted)]">
+                        {(pool.fee / 10000).toFixed(2)}%
+                      </span>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <ExternalLink className="h-4 w-4 text-gray-400" />
+                    <div className="mt-1 text-xs text-[var(--foreground-muted)] font-mono truncate">
+                      {pool.address.slice(0, 8)}...{pool.address.slice(-6)}
                     </div>
                   </div>
+                  <ExternalLink className="h-4 w-4 text-[var(--foreground-muted)]" />
                 </div>
-              ))}
-            </div>
-            
-            {/* Pagination - show if we have exactly itemsPerPage pools (indicating there might be more) */}
-            {pools.length === itemsPerPage && (
-              <Pagination
-                currentPage={currentPage}
-                totalPages={Math.max(1, currentPage + (pools.length === itemsPerPage ? 1 : 0))}
-                onPageChange={handlePageChange}
-                totalItems={pools.length}
-                itemsPerPage={itemsPerPage}
-              />
-            )}
-          </>
-        )}
-      </div>
+              </div>
+            ))}
+          </div>
+
+          {pools.length === itemsPerPage && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={currentPage + 1}
+              onPageChange={setCurrentPage}
+              totalItems={pools.length}
+              itemsPerPage={itemsPerPage}
+            />
+          )}
+        </>
+      )}
     </div>
   );
 }
