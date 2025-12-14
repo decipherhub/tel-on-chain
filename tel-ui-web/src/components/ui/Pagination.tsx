@@ -24,11 +24,7 @@ export function Pagination({
     const range = [];
     const rangeWithDots = [];
 
-    for (
-      let i = Math.max(2, currentPage - delta);
-      i <= Math.min(totalPages - 1, currentPage + delta);
-      i++
-    ) {
+    for (let i = Math.max(2, currentPage - delta); i <= Math.min(totalPages - 1, currentPage + delta); i++) {
       range.push(i);
     }
 
@@ -42,70 +38,64 @@ export function Pagination({
 
     if (currentPage + delta < totalPages - 1) {
       rangeWithDots.push('...', totalPages);
-    } else {
+    } else if (totalPages > 1) {
       rangeWithDots.push(totalPages);
     }
 
-    return rangeWithDots;
+    return rangeWithDots.filter((item, index, arr) => arr.indexOf(item) === index);
   };
 
   const startItem = (currentPage - 1) * itemsPerPage + 1;
   const endItem = Math.min(currentPage * itemsPerPage, totalItems);
 
-  if (totalPages <= 1) {
-    return null;
-  }
+  if (totalPages <= 1) return null;
 
   return (
-    <div className="flex items-center justify-between px-4 py-3 bg-white border-t border-gray-200">
+    <div className="flex items-center justify-between px-5 py-4 border-t border-[var(--border)]">
       {showItemsInfo && (
-        <div className="text-sm text-gray-700">
-          Showing <span className="font-medium">{startItem}</span> to{' '}
-          <span className="font-medium">{endItem}</span> of{' '}
-          <span className="font-medium">{totalItems}</span> results
+        <div className="text-sm text-[var(--foreground-muted)]">
+          <span className="text-[var(--foreground)]">{startItem}-{endItem}</span> of {totalItems}
         </div>
       )}
 
-      <div className="flex items-center space-x-2">
+      <div className="flex items-center gap-1">
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1}
         >
           <ChevronLeft className="h-4 w-4" />
-          Previous
         </Button>
 
-        <div className="flex items-center space-x-1">
-          {getPageNumbers().map((page, index) => (
-            <React.Fragment key={index}>
-              {page === '...' ? (
-                <span className="px-3 py-2 text-gray-500">...</span>
-              ) : (
-                <Button
-                  variant={currentPage === page ? 'primary' : 'outline'}
-                  size="sm"
-                  onClick={() => onPageChange(page as number)}
-                  className="min-w-[40px]"
-                >
-                  {page}
-                </Button>
-              )}
-            </React.Fragment>
-          ))}
-        </div>
+        {getPageNumbers().map((page, index) => (
+          <React.Fragment key={index}>
+            {page === '...' ? (
+              <span className="px-2 text-[var(--foreground-muted)]">...</span>
+            ) : (
+              <button
+                onClick={() => onPageChange(page as number)}
+                className={`min-w-[32px] h-8 text-sm rounded-md transition-all ${
+                  currentPage === page
+                    ? 'bg-[var(--accent)] text-white'
+                    : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)] hover:bg-[var(--surface)]'
+                }`}
+              >
+                {page}
+              </button>
+            )}
+          </React.Fragment>
+        ))}
 
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage === totalPages}
         >
-          Next
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>
     </div>
   );
-} 
+}
